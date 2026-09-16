@@ -1,3 +1,6 @@
+//! Time both Delaunay backends on random and Fibonacci-lattice sites.
+//! Usage: cargo run --release --example hull_bench
+
 use hipparchus_rs::{V3, build::fibonacci, hull};
 use std::time::Instant;
 

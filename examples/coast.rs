@@ -1,7 +1,7 @@
 //! Build a density-driven cell structure over the DDJ 1992 world coastlines.
 //! Usage: cargo run --release --example coast -- <dir with COAST0.IDX, COAST.DAT, COAST0.LNS>
 
-use hipparchus_rs::{EARTH_RADIUS, V3, arc, build, ddj};
+use hipparchus_rs::{CellStructure, EARTH_RADIUS, V3, arc, build, ddj};
 use std::{fmt::Write, fs, path::Path, time::Instant};
 
 fn main() {
@@ -41,7 +41,7 @@ fn main() {
 
     let t = Instant::now();
     let (cs, rep) = build::adaptive(&pts, 256, 120).unwrap();
-    let mut radii: Vec<f64> = (0..cs.len() as u32).map(|c| cs.radius(c)).collect();
+    let mut radii: Vec<f64> = cs.ids().map(|c| cs.radius(c)).collect();
     radii.sort_by(f64::total_cmp);
     println!(
         "{} cells in {} rounds ({:.2?}); max load {}; cell radius {:.0} / {:.0} / {:.0} km (min/median/max)",
@@ -107,11 +107,11 @@ fn main() {
 }
 
 /// Orthographic view: cell boundaries (subdivided great-circle arcs) and coasts.
-fn svg(cs: &hipparchus_rs::CellStructure, segs: &[Vec<V3>], view: V3) -> String {
+fn svg(cs: &CellStructure, segs: &[Vec<V3>], view: V3) -> String {
     let (size, rad) = (800.0, 390.0);
     let east = V3::new(0.0, 0.0, 1.0).cross(view).normalized();
     let north = view.cross(east);
-    let proj = |p: V3| {
+    let project = |p: V3| {
         (
             size / 2.0 + rad * p.dot(east),
             size / 2.0 - rad * p.dot(north),
@@ -119,35 +119,45 @@ fn svg(cs: &hipparchus_rs::CellStructure, segs: &[Vec<V3>], view: V3) -> String 
     };
     let mut out = format!(
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {size} {size}'>\
-         <circle cx='400' cy='400' r='{rad}' fill='#f4f1ea' stroke='#999'/>"
+         <circle cx='{c}' cy='{c}' r='{rad}' fill='#f4f1ea' stroke='#999'/>",
+        c = size / 2.0
     );
-    let mut path = |pts: &mut dyn Iterator<Item = V3>, style: &str| {
-        let mut d = String::new();
-        let mut pen = false;
-        for p in pts {
-            if p.dot(view) < 0.0 {
-                pen = false;
-                continue;
-            }
-            let (x, y) = proj(p);
-            write!(d, "{}{x:.1},{y:.1}", if pen { 'L' } else { 'M' }).unwrap();
-            pen = true;
-        }
-        write!(out, "<path d='{d}' fill='none' {style}/>").unwrap();
-    };
-    for c in 0..cs.len() as u32 {
+    for c in cs.ids() {
         let vs = cs.vertices(c);
-        let mut ring = (0..=vs.len()).flat_map(|i| {
-            let (a, b) = (vs[i % vs.len()], vs[(i + 1) % vs.len()]);
-            (0..8).map(move |k| (a * (8 - k) as f64 + b * k as f64).normalized())
-        });
-        path(&mut ring, "stroke='#c0392b' stroke-width='0.4'");
+        let ring = (0..vs.len())
+            .flat_map(|i| {
+                let (a, b) = (vs[i], vs[(i + 1) % vs.len()]);
+                (0..8).map(move |k| (a * (8 - k) as f64 + b * k as f64).normalized())
+            })
+            .chain(std::iter::once(vs[0]));
+        let style = "stroke='#c0392b' stroke-width='0.4'";
+        path(&mut out, ring, view, &project, style);
     }
     for s in segs {
-        path(
-            &mut s.iter().copied(),
-            "stroke='#2c3e50' stroke-width='0.5'",
-        );
+        let style = "stroke='#2c3e50' stroke-width='0.5'";
+        path(&mut out, s.iter().copied(), view, &project, style);
     }
     out + "</svg>"
+}
+
+/// Appends a path through `pts`, lifting the pen on the far hemisphere.
+fn path(
+    out: &mut String,
+    pts: impl IntoIterator<Item = V3>,
+    view: V3,
+    project: &impl Fn(V3) -> (f64, f64),
+    style: &str,
+) {
+    let mut d = String::new();
+    let mut pen = false;
+    for p in pts {
+        if p.dot(view) < 0.0 {
+            pen = false;
+            continue;
+        }
+        let (x, y) = project(p);
+        write!(d, "{}{x:.1},{y:.1}", if pen { 'L' } else { 'M' }).unwrap();
+        pen = true;
+    }
+    write!(out, "<path d='{d}' fill='none' {style}/>").unwrap();
 }
