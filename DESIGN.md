@@ -203,7 +203,7 @@ resolve differently from an exact 3D test. The sites +X, +Z, −Z, +Y and
 `(−1/3, 2/3, 2/3)` show this: the last site lies within rounding of the
 circle through +X, +Z and +Y, and the two backends choose different
 diagonals. The result is valid to within rounding (every `orient3d` is
-above −1e-14). See O6.
+above −1e-14). See O5.
 
 **`sphere_delaunay` (reference).** Incremental 3D hull:
 
@@ -323,7 +323,7 @@ vertices, finding all 662 true hits.
    mean and the point farthest from that; 8 iterations).
 4. Repeat until no cell needs splitting or no overloaded cell can be split
    (its points are identical, or too close for dot products to separate;
-   see O8).
+   see O7).
 
 Limitations:
 
@@ -450,16 +450,14 @@ Release build on a shared Linux sandbox; indicative only.
   expansion arithmetic would provide it.
 - O4. `CellStructure` holds `Vec<Vec<_>>` rings. A compressed layout (offsets
   plus one flat array) would suit memory mapping (R6).
-- O5. `HullError` and `BuildError` do not implement `std::error::Error` or
-  `Display`.
-- O6. `sphere_delaunay_geo` is Delaunay only to within rounding (5.2). A pass
+- O5. `sphere_delaunay_geo` is Delaunay only to within rounding (5.2). A pass
   of exact `orient3d` edge flips after spade would make it exact.
-- O7. `sphere_delaunay_geo` reports `TooClose` only when two sites project to
+- O6. `sphere_delaunay_geo` reports `TooClose` only when two sites project to
   identical coordinates. Distinct sites 1e-16 rad apart build a
   `CellStructure` whose Voronoi vertices are wrong. A minimum-length check on
   Delaunay edges would enforce the documented separation, because each
   site's nearest neighbour is a Delaunay neighbour.
-- O8. Dot products do not separate points closer than about 1.5e-8 rad
+- O7. Dot products do not separate points closer than about 1.5e-8 rad
   (10 cm), because `cos` is flat near zero. The walk and the adaptive split
   share this limit: `adaptive` keeps two points 1.5e-8 rad apart in one
   cell. The exact predicate of O3 would remove it.
@@ -642,7 +640,7 @@ this crate.
 | D3 | `i32` locals with `L = 2 × 10⁹`, scale from `2 tan(R/2)` | Overflow-free by construction; worst error below 1 mm for cells up to about 2,800 km radius. |
 | D4 | Fixed pole frame (east = +Y) | Deterministic; avoids the original's division by zero. |
 | D5 | Dot product for nearest-centre decisions | Monotone in arc length; cheap; exact predicate still needed (O3). |
-| D6 | `geo` Delaunay backend by default, exact hull as reference | Over 500× faster at 20,000 sites; identical results in tests except near-cospherical ties (O6). |
+| D6 | `geo` Delaunay backend by default, exact hull as reference | Over 500× faster at 20,000 sites; identical results in tests except near-cospherical ties (O5). |
 | D7 | Morton-ordered insertion | `geo`'s sequential insertion depends on input locality. |
 | D8 | Two-means split replacing the centre | Simple; revisit with R4. |
 | D9 | `MAX_CELL_RADIUS = π/2` | Keeps the farthest point of each cell at a vertex (2.0 did not) and bounds the stereographic scale; R3 needs a lower value. |

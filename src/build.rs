@@ -45,6 +45,7 @@ fn split(pts: &[V3]) -> Option<[V3; 2]> {
     Some(k)
 }
 
+#[derive(Clone, Debug)]
 pub struct Report {
     pub rounds: usize,
     pub load: Vec<usize>,

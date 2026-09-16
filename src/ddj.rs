@@ -5,7 +5,7 @@ use crate::algebra::{Frame, V3};
 pub const LC_SCALE: f64 = 32000.0;
 
 /// 40-byte little-endian index record (16-bit MS C 6.0 layout).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IndexRec {
     pub centre: V3,
     pub radius: f64,

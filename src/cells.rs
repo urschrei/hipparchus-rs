@@ -3,6 +3,7 @@
 use crate::algebra::{Frame, V3, arc, plane_extent};
 use crate::hull::{HullError, sphere_delaunay_geo};
 use std::collections::VecDeque;
+use std::{error, fmt};
 
 /// Largest local coordinate magnitude used (headroom below `i32::MAX`).
 const LOCAL_MAX: f64 = 2.0e9;
@@ -11,10 +12,31 @@ const LOCAL_MAX: f64 = 2.0e9;
 /// vertex. Add more centres to cover sparse regions.
 pub const MAX_CELL_RADIUS: f64 = std::f64::consts::FRAC_PI_2;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BuildError {
     Hull(HullError),
     CellTooLarge { cell: u32, radius: f64 },
+}
+
+impl fmt::Display for BuildError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Hull(_) => write!(f, "cannot triangulate the centres"),
+            Self::CellTooLarge { cell, radius } => write!(
+                f,
+                "cell {cell} has radius {radius} rad, more than MAX_CELL_RADIUS"
+            ),
+        }
+    }
+}
+
+impl error::Error for BuildError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Hull(e) => Some(e),
+            Self::CellTooLarge { .. } => None,
+        }
+    }
 }
 
 impl From<HullError> for BuildError {
@@ -32,6 +54,7 @@ pub struct Local {
     pub n: i32,
 }
 
+#[derive(Clone, Debug)]
 pub struct CellStructure {
     centres: Vec<V3>,
     /// Delaunay neighbours, circular and CCW seen from outside.

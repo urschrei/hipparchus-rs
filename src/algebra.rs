@@ -107,7 +107,7 @@ pub fn plane_extent(r: f64) -> f64 {
 /// The original divides by `hypot(x, y)` and fails at the poles. Here a pole
 /// gets a fixed frame (east = +Y). The frame is a deterministic function of
 /// the centre, so data encoded against a stored centre always round-trips.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Frame {
     pub centre: V3,
     east: V3,

@@ -11,8 +11,9 @@ use robust::{Coord3D, orient3d};
 use spade::Triangulation;
 use spade::handles::FixedVertexHandle;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HullError {
     /// Fewer than four distinct, non-coplanar sites.
     TooFewSites,
@@ -25,6 +26,19 @@ pub enum HullError {
     /// finite magnitudes up to 2^201.
     Projection,
 }
+
+impl fmt::Display for HullError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TooFewSites => write!(f, "fewer than four distinct, non-coplanar sites"),
+            Self::Duplicate(i) => write!(f, "site {i} equals an earlier site"),
+            Self::TooClose(i) => write!(f, "site {i} is within rounding of an earlier site"),
+            Self::Projection => write!(f, "a projected site coordinate is out of range"),
+        }
+    }
+}
+
+impl std::error::Error for HullError {}
 
 fn c3(v: V3) -> Coord3D<f64> {
     Coord3D {
