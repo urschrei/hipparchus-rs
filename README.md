@@ -24,6 +24,26 @@ findings and roadmap.
 Experimental (v0.1). The model is spherical only; Hipparchus proper worked on
 the ellipsoid. Points are supported; line and region objects are not yet.
 
+## What you can use this for
+
+- **Store coordinates compactly.** `CellStructure::encode` stores a point as a
+  cell identifier and two 32-bit offsets: 12 bytes, with an error below 1 mm
+  in cells up to about 2,800 km in radius. See
+  [`examples/nearby.rs`](examples/nearby.rs).
+- **Index points by density.** `build::adaptive` splits cells until none holds
+  more than a given number of points, so dense areas get small cells and open
+  ocean gets large ones. See [`examples/nearby.rs`](examples/nearby.rs), and
+  [`examples/coast.rs`](examples/coast.rs) for cell statistics and a drawing
+  of the cells.
+- **Find points near a place.** `CellStructure::cells_in_cap` returns the
+  cells that a circle of a given radius can touch, so a query decodes only
+  the points in those cells. See [`examples/nearby.rs`](examples/nearby.rs).
+- **Triangulate points on the sphere.** `hull::sphere_delaunay_geo` gives the
+  spherical Delaunay triangulation, and `CellStructure` gives each point's
+  Voronoi neighbours and vertices, with no seams at the poles or the
+  antimeridian. See [`examples/hull_bench.rs`](examples/hull_bench.rs) for
+  timings, and the drawing in [`examples/coast.rs`](examples/coast.rs).
+
 ## Contents
 
 | Module | Purpose |
@@ -38,6 +58,7 @@ the ellipsoid. Points are supported; line and region objects are not yet.
 
 ```sh
 cargo test --release
+cargo run --release --example nearby       # store points, query near Dublin
 cargo run --release --example coast        # statistics, writes cells.svg
 cargo run --release --example hull_bench   # triangulation timings
 ```
