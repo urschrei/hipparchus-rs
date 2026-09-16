@@ -8,7 +8,7 @@ pub mod ddj;
 pub mod hull;
 
 pub use algebra::{Frame, V3, arc};
-pub use cells::{BuildError, CellStructure, Local};
+pub use cells::{BuildError, CellId, CellStructure, Local};
 pub use hull::HullError;
 
 /// Mean Earth radius (m), matching `geo`'s haversine.

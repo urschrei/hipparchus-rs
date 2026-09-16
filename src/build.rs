@@ -2,7 +2,7 @@
 //! `capacity` points until none does (cf. Geodyssey's population grids).
 
 use crate::algebra::V3;
-use crate::cells::{BuildError, CellStructure};
+use crate::cells::{BuildError, CellId, CellStructure};
 
 /// Roughly uniform seed centres (Fibonacci lattice), so even empty regions
 /// are covered by cells of bounded size.
@@ -73,11 +73,11 @@ pub fn adaptive(
     let mut rounds = 1;
     loop {
         let mut members: Vec<Vec<V3>> = vec![Vec::new(); cs.len()];
-        let mut hint = 0;
+        let mut hint = CellId(0);
         for &p in pts {
             // Consecutive vertices are close, so the last cell is a good start.
             hint = cs.home_cell(p, hint).0;
-            members[hint as usize].push(p);
+            members[hint.index()].push(p);
         }
         let mut next = Vec::with_capacity(cs.len());
         for (&c, m) in cs.centres().iter().zip(&members) {

@@ -12,6 +12,26 @@ const LOCAL_MAX: f64 = 2.0e9;
 /// vertex. Add more centres to cover sparse regions.
 pub const MAX_CELL_RADIUS: f64 = std::f64::consts::FRAC_PI_2;
 
+/// Identifier of a cell: the index of its centre in the centres given to
+/// [`CellStructure::new`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct CellId(pub u32);
+
+impl CellId {
+    /// The identifier as an index, for example into a `Vec` with one entry
+    /// per cell.
+    pub const fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl fmt::Display for CellId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// Error from [`CellStructure::new`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum BuildError {
@@ -19,8 +39,8 @@ pub enum BuildError {
     Hull(HullError),
     /// A cell radius exceeds [`MAX_CELL_RADIUS`].
     CellTooLarge {
-        /// The cell identifier.
-        cell: u32,
+        /// The cell.
+        cell: CellId,
         /// The cell radius in radians.
         radius: f64,
     },
@@ -58,8 +78,8 @@ impl From<HullError> for BuildError {
 /// identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Local {
-    /// Home cell identifier.
-    pub cell: u32,
+    /// Home cell.
+    pub cell: CellId,
     /// East offset in local units.
     pub e: i32,
     /// North offset in local units.
@@ -75,7 +95,7 @@ pub struct Local {
 pub struct CellStructure {
     centres: Vec<V3>,
     /// Delaunay neighbours, circular and CCW seen from outside.
-    neighbours: Vec<Vec<u32>>,
+    neighbours: Vec<Vec<CellId>>,
     /// Voronoi vertices of each cell, in the same circular order.
     vertices: Vec<Vec<V3>>,
     /// Maximum arc from the centre to any point of the cell.
@@ -120,7 +140,7 @@ impl CellStructure {
             let mut verts = Vec::with_capacity(fan.len());
             let mut t = fan[0];
             for _ in 0..fan.len() {
-                ring.push(t.0);
+                ring.push(CellId(t.0));
                 verts.push(t.2);
                 t = *fan.iter().find(|u| u.0 == t.1).expect("closed fan");
             }
@@ -130,7 +150,7 @@ impl CellStructure {
                 .fold(0.0, f64::max);
             if r > MAX_CELL_RADIUS {
                 return Err(BuildError::CellTooLarge {
-                    cell: i as u32,
+                    cell: CellId(i as u32),
                     radius: r,
                 });
             }
@@ -164,42 +184,42 @@ impl CellStructure {
         self.centres.is_empty()
     }
     /// Identifiers of all cells.
-    pub fn ids(&self) -> impl ExactSizeIterator<Item = u32> + use<> {
-        0..self.len() as u32
+    pub fn ids(&self) -> impl ExactSizeIterator<Item = CellId> + use<> {
+        (0..self.len() as u32).map(CellId)
     }
     /// Centres of all cells, indexed by cell identifier.
     pub fn centres(&self) -> &[V3] {
         &self.centres
     }
     /// Centre of cell `c`.
-    pub fn centre(&self, c: u32) -> V3 {
-        self.centres[c as usize]
+    pub fn centre(&self, c: CellId) -> V3 {
+        self.centres[c.index()]
     }
     /// Largest arc from the centre of cell `c` to a point of the cell, in
     /// radians.
-    pub fn radius(&self, c: u32) -> f64 {
-        self.radius[c as usize]
+    pub fn radius(&self, c: CellId) -> f64 {
+        self.radius[c.index()]
     }
     /// Cells that share an edge with cell `c`, counter-clockwise seen from
     /// outside.
-    pub fn neighbours(&self, c: u32) -> &[u32] {
-        &self.neighbours[c as usize]
+    pub fn neighbours(&self, c: CellId) -> &[CellId] {
+        &self.neighbours[c.index()]
     }
     /// Voronoi vertices of cell `c`. Vertex `k` is between neighbours `k` and
     /// `k + 1`.
-    pub fn vertices(&self, c: u32) -> &[V3] {
-        &self.vertices[c as usize]
+    pub fn vertices(&self, c: CellId) -> &[V3] {
+        &self.vertices[c.index()]
     }
     /// Plane distance of one local unit in cell `c`, in radians. The ground
     /// distance is not more than this.
-    pub fn resolution(&self, c: u32) -> f64 {
-        1.0 / self.scale[c as usize]
+    pub fn resolution(&self, c: CellId) -> f64 {
+        1.0 / self.scale[c.index()]
     }
 
     /// Greedy walk from cell `start` to the cell whose centre is nearest to
     /// `p`. Returns the cell and the number of moves. Correct on a Delaunay
     /// graph; uses the dot product as a monotone proxy for distance.
-    pub fn home_cell(&self, p: V3, start: u32) -> (u32, usize) {
+    pub fn home_cell(&self, p: V3, start: CellId) -> (CellId, usize) {
         let (mut cur, mut steps) = (start, 0);
         let mut best = p.dot(self.centre(cur));
         loop {
@@ -220,19 +240,19 @@ impl CellStructure {
     /// Cells that may intersect the cap of `radius` (radians) around `centre`:
     /// a breadth-first search outward from the cap centre's home cell, which
     /// the walk finds from cell `hint`.
-    pub fn cells_in_cap(&self, centre: V3, radius: f64, hint: u32) -> Vec<u32> {
+    pub fn cells_in_cap(&self, centre: V3, radius: f64, hint: CellId) -> Vec<CellId> {
         let (home, _) = self.home_cell(centre, hint);
         let mut seen = vec![false; self.len()];
         let mut out = Vec::new();
         let mut queue = VecDeque::from([home]);
-        seen[home as usize] = true;
+        seen[home.index()] = true;
         while let Some(c) = queue.pop_front() {
             if arc(centre, self.centre(c)) > radius + self.radius(c) {
                 continue;
             }
             out.push(c);
             for &nb in self.neighbours(c) {
-                if !std::mem::replace(&mut seen[nb as usize], true) {
+                if !std::mem::replace(&mut seen[nb.index()], true) {
                     queue.push_back(nb);
                 }
             }
@@ -242,10 +262,10 @@ impl CellStructure {
 
     /// Encodes `p` in its home cell, walking from cell `hint`. For sequential
     /// points, the cell of the previous point is a good hint.
-    pub fn encode(&self, p: V3, hint: u32) -> Local {
+    pub fn encode(&self, p: V3, hint: CellId) -> Local {
         let (cell, _) = self.home_cell(p, hint);
-        let [e, n] = self.frames[cell as usize].map(p);
-        let s = self.scale[cell as usize];
+        let [e, n] = self.frames[cell.index()].map(p);
+        let s = self.scale[cell.index()];
         Local {
             cell,
             e: (e * s).round() as i32,
@@ -256,7 +276,7 @@ impl CellStructure {
     /// The point that `l` encodes.
     pub fn decode(&self, l: Local) -> V3 {
         let s = self.resolution(l.cell);
-        self.frames[l.cell as usize].unmap([l.e as f64 * s, l.n as f64 * s])
+        self.frames[l.cell.index()].unmap([l.e as f64 * s, l.n as f64 * s])
     }
 }
 

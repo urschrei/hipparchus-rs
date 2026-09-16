@@ -1,7 +1,7 @@
 //! Build a density-driven cell structure over the DDJ 1992 world coastlines.
 //! Usage: cargo run --release --example coast -- <dir with COAST0.IDX, COAST.DAT, COAST0.LNS>
 
-use hipparchus_rs::{CellStructure, EARTH_RADIUS, V3, arc, build, ddj};
+use hipparchus_rs::{CellId, CellStructure, EARTH_RADIUS, V3, arc, build, ddj};
 use std::{fmt::Write, fs, path::Path, time::Instant};
 
 fn main() {
@@ -56,7 +56,7 @@ fn main() {
 
     // Encode everything, walking from the previous vertex's cell.
     let t = Instant::now();
-    let (mut hint, mut steps, mut worst) = (0, 0, 0f64);
+    let (mut hint, mut steps, mut worst) = (CellId(0), 0, 0f64);
     for &p in &pts {
         let (c, s) = cs.home_cell(p, hint);
         steps += s;
@@ -71,7 +71,11 @@ fn main() {
         steps as f64 / pts.len() as f64,
         km(worst) * 1e6
     );
-    let cold: usize = pts.iter().step_by(97).map(|&p| cs.home_cell(p, 0).1).sum();
+    let cold: usize = pts
+        .iter()
+        .step_by(97)
+        .map(|&p| cs.home_cell(p, CellId(0)).1)
+        .sum();
     println!(
         "cold walks from cell 0: {:.1} steps/pt",
         cold as f64 / pts.len().div_ceil(97) as f64
@@ -79,15 +83,15 @@ fn main() {
 
     // Cap query around Dublin, checked against a full scan.
     let (q, r) = (V3::from_lat_lon(53.35, -6.26), 500e3 / EARTH_RADIUS);
-    let cells = cs.cells_in_cap(q, r, 0);
+    let cells = cs.cells_in_cap(q, r, CellId(0));
     let mut owner = vec![false; cs.len()];
-    cells.iter().for_each(|&c| owner[c as usize] = true);
-    let (mut touched, mut found, mut truth, mut h) = (0, 0, 0, 0);
+    cells.iter().for_each(|&c| owner[c.index()] = true);
+    let (mut touched, mut found, mut truth, mut h) = (0, 0, 0, CellId(0));
     for &p in &pts {
         h = cs.home_cell(p, h).0;
         let inside = arc(p, q) <= r;
         truth += inside as usize;
-        if owner[h as usize] {
+        if owner[h.index()] {
             touched += 1;
             found += inside as usize;
         }

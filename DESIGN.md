@@ -82,7 +82,7 @@ Conventions:
 - Coordinates are geocentric on a unit sphere; lat/lon are degrees.
   `EARTH_RADIUS` is 6,371,008.8 m, matching `geo`'s Haversine.
 - Triangles are counter-clockwise seen from outside the sphere.
-- Cell identifiers are `u32` indices into the centre list.
+- A cell is identified by `CellId`, a `u32` index into the centre list.
 
 ## 4. Core representation
 
@@ -495,12 +495,12 @@ Representation, following AC8:
 ```rust
 struct LineSet { parts: Vec<Vec<CellRun>> }
 struct CellRun {
-    cell: u32,
+    cell: CellId,
     entry: Option<Crossing>,   // None at the start of a part
     vertices: Vec<(i32, i32)>, // local coordinates in `cell`
     exit: Option<Crossing>,    // None at the end of a part
 }
-struct Crossing { neighbour: u32, t: u32 } // fixed-point position on the shared Voronoi edge
+struct Crossing { neighbour: CellId, t: u32 } // fixed-point position on the shared Voronoi edge
 ```
 
 The crossing is stored once per shared edge in a fixed direction (lower
@@ -659,7 +659,7 @@ this crate.
 
 | ID | Decision | Reason |
 |---|---|---|
-| D1 | `u32` cell identifiers | Removes the 65,536-cell ceiling; 16-bit remains an option for storage (R6). |
+| D1 | `CellId(u32)` cell identifiers | Removes the 65,536-cell ceiling, and keeps cells apart from site indices and counts; 16-bit remains an option for storage (R6). |
 | D2 | Round local coordinates | Halves the worst quantisation error relative to the 1992 truncation. |
 | D3 | `i32` locals with `L = 2 × 10⁹`, scale from `2 tan(R/2)` | Overflow-free by construction; worst error below 1 mm for cells up to about 2,800 km radius. |
 | D4 | Fixed pole frame (east = +Y) | Deterministic; avoids the original's division by zero. |

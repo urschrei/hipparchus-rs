@@ -3,7 +3,7 @@ use hegel::TestCase;
 use hegel::generators as gs;
 use hipparchus_rs::cells::{BuildError, MAX_CELL_RADIUS};
 use hipparchus_rs::hull::{HullError, MIN_SEPARATION};
-use hipparchus_rs::{CellStructure, EARTH_RADIUS, Frame, V3, algebra, build, ddj, hull};
+use hipparchus_rs::{CellId, CellStructure, EARTH_RADIUS, Frame, V3, algebra, build, ddj, hull};
 use std::collections::{BTreeSet, HashMap};
 
 struct Rng(u64);
@@ -90,8 +90,8 @@ fn draw_structure(tc: &TestCase) -> CellStructure {
     CellStructure::new(separate(build::fibonacci(lattice), drawn)).unwrap_or_else(|_| tc.reject())
 }
 
-fn draw_cell(tc: &TestCase, cs: &CellStructure) -> u32 {
-    tc.draw(gs::integers::<u32>().max_value(cs.len() as u32 - 1))
+fn draw_cell(tc: &TestCase, cs: &CellStructure) -> CellId {
+    CellId(tc.draw(gs::integers::<u32>().max_value(cs.len() as u32 - 1)))
 }
 
 #[test]
@@ -324,7 +324,7 @@ fn cospherical_and_duplicate_sites() {
     }
     let ico: Vec<V3> = ico.into_iter().map(V3::normalized).collect();
     let cs = CellStructure::new(ico.clone()).unwrap();
-    assert!((0..12).all(|c| cs.neighbours(c).len() == 5));
+    assert!(cs.ids().all(|c| cs.neighbours(c).len() == 5));
     for (name, f) in BACKENDS {
         assert_delaunay(&ico, &f(&ico).unwrap(), name);
         let mut dup = ico.clone();

@@ -64,11 +64,11 @@ cargo run --release --example hull_bench   # triangulation timings
 ```
 
 ```rust
-use hipparchus_rs::{build, CellStructure, V3};
+use hipparchus_rs::{build, CellId, CellStructure, V3};
 
 let cells = CellStructure::new(build::fibonacci(500)).unwrap();
 let p = V3::from_lat_lon(53.34, -6.25);
-let local = cells.encode(p, 0);   // { cell, e, n }
+let local = cells.encode(p, CellId(0));   // { cell, e, n }
 let back = cells.decode(local);
 assert!(hipparchus_rs::arc(p, back) * hipparchus_rs::EARTH_RADIUS < 1e-3);
 ```

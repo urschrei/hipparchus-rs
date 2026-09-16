@@ -7,7 +7,7 @@
 //! Usage: cargo run --release --example nearby -- [lat lon radius_km]
 //! (default: Dublin, 500 km)
 
-use hipparchus_rs::{EARTH_RADIUS, Local, V3, arc, build, ddj};
+use hipparchus_rs::{CellId, EARTH_RADIUS, Local, V3, arc, build, ddj};
 use std::{fs, path::Path};
 
 fn main() {
@@ -32,10 +32,10 @@ fn main() {
     // At most 256 vertices per cell; 120 seed cells cover the empty ocean.
     let (cells, _) = build::adaptive(&pts, 256, 120).expect("coastline cells");
     let mut store: Vec<Vec<Local>> = vec![Vec::new(); cells.len()];
-    let mut hint = 0;
+    let mut hint = CellId(0);
     for &p in &pts {
         let local = cells.encode(p, hint);
-        store[local.cell as usize].push(local);
+        store[local.cell.index()].push(local);
         hint = local.cell;
     }
     println!(
@@ -46,14 +46,14 @@ fn main() {
     );
 
     let (place, radius) = (V3::from_lat_lon(lat, lon), km * 1e3 / EARTH_RADIUS);
-    let candidates = cells.cells_in_cap(place, radius, 0);
+    let candidates = cells.cells_in_cap(place, radius, CellId(0));
     let decoded = candidates
         .iter()
-        .map(|&c| store[c as usize].len())
+        .map(|&c| store[c.index()].len())
         .sum::<usize>();
     let near: Vec<V3> = candidates
         .iter()
-        .flat_map(|&c| &store[c as usize])
+        .flat_map(|&c| &store[c.index()])
         .map(|&local| cells.decode(local))
         .filter(|&p| arc(p, place) <= radius)
         .collect();
