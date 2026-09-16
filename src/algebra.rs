@@ -109,7 +109,7 @@ pub fn plane_extent(r: f64) -> f64 {
 /// the centre, so data encoded against a stored centre always round-trips.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Frame {
-    pub centre: V3,
+    centre: V3,
     east: V3,
     north: V3,
 }
@@ -127,6 +127,11 @@ impl Frame {
             east,
             north: centre.cross(east),
         }
+    }
+
+    /// The tangent point.
+    pub fn centre(&self) -> V3 {
+        self.centre
     }
 
     /// Sphere → plane. Singular only at the antipode of the centre.
