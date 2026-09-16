@@ -239,9 +239,12 @@ above −1e-14). See O5.
 ### 5.3 Neighbour rings and Voronoi vertices
 
 For each triangle `(a, b, c)` the circumcentre is
-`normalize((b − a) × (c − a))`. With counter-clockwise faces this normal
-points outward, so it is the Voronoi vertex on the correct side even for
-very large triangles. Site `a` collects `(b, c, circumcentre)` from each
+`normalize((b − a) × (c − a))`, with the labels rotated so that `a` is
+opposite the longest edge. The two edges at `a` are then the shortest, which
+limits rounding: at a vertex opposite a 4.8e-7 rad edge, the cross product
+gave a vertex error of 1.1e-11 (`thin_triangle_vertices_are_accurate`).
+With counter-clockwise faces this normal points outward, so it is the
+Voronoi vertex on the correct side even for very large triangles. Site `a` collects `(b, c, circumcentre)` from each
 incident triangle `(a, b, c)`; the ring follows `c` to the triangle whose
 `b` equals it. Each step searches the fan, so a ring costs the square of
 the degree, which is small.
@@ -424,6 +427,7 @@ cases than the default 100.
 | `wide_cell_is_rejected` | A cell whose farthest point lies inside an edge is rejected (5.4). |
 | `neighbour_rings_are_symmetric` (P) | I2. |
 | `voronoi_vertices_are_nearest_to_their_sites` (P) | Vertex `k` is equidistant from the centre and neighbours `k` and `k + 1`, and no centre is nearer. |
+| `thin_triangle_vertices_are_accurate` | A triangle with one short edge gives a vertex that no centre is nearer to, to 1e-12. |
 | `walk_finds_nearest_centre` (P) | The walk reaches a nearest centre from any start. |
 | `cell_radius_bounds_its_points` (P) | I3. |
 | `encoding_error_is_bounded` (P) | The round-trip error is at most `√2/2` resolution units (5.7). |

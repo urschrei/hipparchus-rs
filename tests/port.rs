@@ -375,6 +375,25 @@ fn voronoi_vertices_are_nearest_to_their_sites(tc: TestCase) {
     }
 }
 
+#[test]
+fn thin_triangle_vertices_are_accurate() {
+    // Sites 9 and 10 are 4.8e-7 rad apart; their triangle with site 5 has
+    // two sides of 0.72 rad.
+    let mut sites = build::fibonacci(8);
+    sites.extend([
+        V3::new(0.0, 0.0, -1.0),
+        V3::new(1.0, 0.0, 0.0),
+        V3::new(0.9999999999998863, 0.0, 4.768371640872528e-7),
+    ]);
+    let cs = CellStructure::new(sites).unwrap_or_else(|e| panic!("{e}"));
+    for c in cs.ids() {
+        for &v in cs.vertices(c) {
+            let d = v.dot(cs.centre(c));
+            assert!(cs.ids().all(|o| v.dot(cs.centre(o)) <= d + 1e-12), "{c}");
+        }
+    }
+}
+
 #[hegel::test]
 fn walk_finds_nearest_centre(tc: TestCase) {
     let cs = draw_structure(&tc);

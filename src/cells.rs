@@ -101,12 +101,11 @@ impl CellStructure {
         // triangle `(a, b, c)`. The circumcentre is a Voronoi vertex.
         let mut fans: Vec<Vec<(u32, u32, V3)>> = vec![Vec::new(); n];
         for &[a, b, c] in &tris {
-            let (pa, pb, pc) = (
+            let cc = circumcentre(
                 centres[a as usize],
                 centres[b as usize],
                 centres[c as usize],
             );
-            let cc = (pb - pa).cross(pc - pa).normalized();
             fans[a as usize].push((b, c, cc));
             fans[b as usize].push((c, a, cc));
             fans[c as usize].push((a, b, cc));
@@ -259,4 +258,21 @@ impl CellStructure {
         let s = self.resolution(l.cell);
         self.frames[l.cell as usize].unmap([l.e as f64 * s, l.n as f64 * s])
     }
+}
+
+/// Outward unit normal of the plane through `a`, `b` and `c`, which are
+/// counter-clockwise seen from outside: their circumcentre on the sphere.
+/// The cross product is taken at the vertex opposite the longest edge. Its
+/// two edges are then the shortest, which limits rounding in thin triangles.
+fn circumcentre(a: V3, b: V3, c: V3) -> V3 {
+    let len2 = |u: V3, v: V3| (u - v).dot(u - v);
+    let (ab, bc, ca) = (len2(a, b), len2(b, c), len2(c, a));
+    let normal = if bc >= ab && bc >= ca {
+        (b - a).cross(c - a)
+    } else if ca >= ab {
+        (c - b).cross(a - b)
+    } else {
+        (a - c).cross(b - c)
+    };
+    normal.normalized()
 }
