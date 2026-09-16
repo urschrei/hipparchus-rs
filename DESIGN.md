@@ -186,16 +186,29 @@ Two backends produce it.
 
 Errors:
 
-- `Duplicate(i)`: site `i` is the first site equal to an earlier site. Both
-  backends report the same index.
-- `TooClose(i)`: two distinct sites project to identical coordinates; `i`
-  is the lowest index that coincides with an earlier site.
+- `Duplicate(i)` or `TooClose(i)`: site `i` equals, or is closer than
+  `MIN_SEPARATION` to, a site with a lower index, and `i` is the lowest such
+  index. Both backends report the same error; see "Separation" below.
 - `Projection` when spade rejects a coordinate (magnitude above 2²⁰¹, or
   not finite). Sites near `s₀` project to about `4/θ`, so the limit is not a
   practical concern. spade also rejects non-zero magnitudes below 2⁻¹⁴²;
   such coordinates become zero, a change below the rounding error of
   `map`.
 - `TooFewSites` for fewer than four sites or all projected sites collinear.
+
+Separation: `MIN_SEPARATION` is 1e-7 rad (0.64 m on the Earth). Below about
+4e-8 rad, rounding can put a site inside the hull, and dot products cannot
+separate points below about 1.5e-8 rad (O6).
+
+- A hash grid with boxes of side `MIN_SEPARATION` finds the lowest index
+  that is too close to a lower index: sites closer than that are in the same
+  box or adjacent boxes. The exact backend runs it first.
+- The geo backend runs it only on failure. Sites too close to site 0 project
+  inaccurately, so it compares every site with site 0 first. Each site's
+  nearest neighbour is a Delaunay neighbour, so any other close pair gives a
+  merged spade vertex or a planar edge shorter than `MIN_SEPARATION`.
+- The distance test is the chord, which equals the arc to within rounding
+  at this length.
 
 Exactness: spade's predicates are exact on the projected floating-point
 coordinates, not on the original vectors, so near-cospherical ties can
@@ -217,9 +230,9 @@ above −1e-14). See O5.
 - Coplanar faces (`orient3d == 0`) count as not visible. Visibility is
   constant over coplanar faces, so the visible set is always a disc and the
   result remains a valid triangulation of the tie.
-- A site with no visible face is a `Duplicate` or, if distinct, `TooClose`:
-  it lies within rounding of the hull, which requires a separation below
-  roughly a metre on the Earth.
+- A site with no visible face lies inside the hull through rounding. The
+  separation check prevents this; the backend reports `TooClose` if it
+  occurs.
 - Cost is O(n·F), i.e. O(n²): 6.7 s at 20,000 sites. It remains useful as an
   exact oracle and as the basis for local restructuring (R4).
 
@@ -323,7 +336,7 @@ vertices, finding all 662 true hits.
    mean and the point farthest from that; 8 iterations).
 4. Repeat until no cell needs splitting or no overloaded cell can be split
    (its points are identical, or too close for dot products to separate;
-   see O7).
+   see O6).
 
 Limitations:
 
@@ -389,8 +402,8 @@ fetch instructions in that directory's README) and writes:
 Tests marked (P) are property tests using Hegel. Their unit vectors come
 from arbitrary coordinates in [−1, 1], so the inputs include poles, axis
 points and cocircular sets. Tests that build a cell structure use a
-Fibonacci lattice plus drawn sites, and drop any site within 2e-7 rad of
-another (the `TooClose` precondition). Set `HEGEL_TEST_CASES` to run more
+Fibonacci lattice plus drawn sites, and drop any site closer than
+`MIN_SEPARATION` to another. Set `HEGEL_TEST_CASES` to run more
 cases than the default 100.
 
 | Test | Establishes |
@@ -406,7 +419,7 @@ cases than the default 100.
 | `clustered_sites_triangulate` | Both backends triangulate a 1 km cluster that contains the projection pole. |
 | `delaunay_backends_are_valid` (P) | Each result is a closed surface with 2n − 4 faces and passes the empty-circumcircle check: exactly for `sphere_delaunay`, to 1e-14 for `sphere_delaunay_geo`. |
 | `delaunay_backends_agree_without_near_ties` (P) | The backends give the same edges when no edge is within rounding of a tie. |
-| `backends_report_the_first_duplicate` (P) | Both backends report the same `Duplicate` index. |
+| `backends_report_the_first_close_site` (P) | After exact or perturbed copies of sites are inserted, both backends report the `Duplicate` or `TooClose` index that a brute-force search gives. |
 | `cospherical_and_duplicate_sites` | Icosahedron (five coplanar neighbours per vertex): valid triangulations and five-neighbour rings; duplicates reported by index. |
 | `wide_cell_is_rejected` | A cell whose farthest point lies inside an edge is rejected (5.4). |
 | `neighbour_rings_are_symmetric` (P) | I2. |
@@ -452,12 +465,7 @@ Release build on a shared Linux sandbox; indicative only.
   plus one flat array) would suit memory mapping (R6).
 - O5. `sphere_delaunay_geo` is Delaunay only to within rounding (5.2). A pass
   of exact `orient3d` edge flips after spade would make it exact.
-- O6. `sphere_delaunay_geo` reports `TooClose` only when two sites project to
-  identical coordinates. Distinct sites 1e-16 rad apart build a
-  `CellStructure` whose Voronoi vertices are wrong. A minimum-length check on
-  Delaunay edges would enforce the documented separation, because each
-  site's nearest neighbour is a Delaunay neighbour.
-- O7. Dot products do not separate points closer than about 1.5e-8 rad
+- O6. Dot products do not separate points closer than about 1.5e-8 rad
   (10 cm), because `cos` is flat near zero. The walk and the adaptive split
   share this limit: `adaptive` keeps two points 1.5e-8 rad apart in one
   cell. The exact predicate of O3 would remove it.
@@ -646,3 +654,4 @@ this crate.
 | D9 | `MAX_CELL_RADIUS = π/2` | Keeps the farthest point of each cell at a vertex (2.0 did not) and bounds the stereographic scale; R3 needs a lower value. |
 | D10 | Sphere only in v0.1 | Matches the public 1992 code; ellipsoid is R5. |
 | D11 | Blue Oak Model License 1.0.0 | Permissive; the 1992 data files are excluded and documented. |
+| D12 | `MIN_SEPARATION = 1e-7` rad, checked by both backends | Above the rounding limits of the hull and of dot products; the same error from both backends. |

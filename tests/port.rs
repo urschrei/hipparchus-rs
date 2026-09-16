@@ -2,6 +2,7 @@ use geo::{Distance, Haversine, Point};
 use hegel::TestCase;
 use hegel::generators as gs;
 use hipparchus_rs::cells::{BuildError, MAX_CELL_RADIUS};
+use hipparchus_rs::hull::{HullError, MIN_SEPARATION};
 use hipparchus_rs::{CellStructure, EARTH_RADIUS, Frame, V3, algebra, build, ddj, hull};
 use std::collections::{BTreeSet, HashMap};
 
@@ -61,14 +62,16 @@ fn draw_point(tc: &TestCase) -> V3 {
     v3(tc.draw(unit_vector()))
 }
 
-/// Sites must be about a metre apart (`HullError::TooClose`).
-const MIN_SEPARATION: f64 = 2e-7;
+/// `true` if `a` and `b` are closer than `MIN_SEPARATION`.
+fn too_close(a: V3, b: V3) -> bool {
+    let d = a - b;
+    d.dot(d) < MIN_SEPARATION * MIN_SEPARATION
+}
 
-/// Appends each site that is at least `MIN_SEPARATION` from every site
-/// already in `out`.
+/// Appends each site that is not too close to a site already in `out`.
 fn separate(mut out: Vec<V3>, sites: impl IntoIterator<Item = V3>) -> Vec<V3> {
     for p in sites {
-        if out.iter().all(|&q| algebra::arc(p, q) >= MIN_SEPARATION) {
+        if !out.iter().any(|&q| too_close(p, q)) {
             out.push(p);
         }
     }
@@ -172,7 +175,7 @@ fn frame_maps_arc_to_plane_extent(tc: TestCase) {
 /// can give the wrong sign.
 const PROJECTION_ROUNDING: f64 = 1e-14;
 
-type Backend = fn(&[V3]) -> Result<Vec<[u32; 3]>, hull::HullError>;
+type Backend = fn(&[V3]) -> Result<Vec<[u32; 3]>, HullError>;
 /// Each backend with the `orient3d` tolerance its predicates give: the geo
 /// backend is exact on projected coordinates only.
 const BACKENDS: [(&str, Backend, f64); 2] = [
@@ -266,22 +269,31 @@ fn delaunay_backends_agree_without_near_ties(tc: TestCase) {
 }
 
 #[hegel::test]
-fn backends_report_the_first_duplicate(tc: TestCase) {
+fn backends_report_the_first_close_site(tc: TestCase) {
     let mut pts = draw_sites(&tc, 4, 100);
-    tc.assume(BACKENDS.iter().all(|(_, f, _)| f(&pts).is_ok()));
     let copies = tc.draw(gs::integers::<usize>().min_value(1).max_value(4));
     for _ in 0..copies {
         let from = tc.draw(gs::integers::<usize>().max_value(pts.len() - 1));
         let to = tc.draw(gs::integers::<usize>().max_value(pts.len()));
-        pts.insert(to, pts[from]);
+        // An exact copy, or a site moved by less than MIN_SEPARATION / 2.
+        let offset = tc.draw(gs::floats::<f64>().min_value(0.0).max_value(0.5));
+        let copy = (pts[from] + draw_point(&tc) * (offset * MIN_SEPARATION)).normalized();
+        pts.insert(to, copy);
     }
-    let first = (1..pts.len()).find(|&i| pts[..i].contains(&pts[i]));
+    // Brute force: the lowest index with an equal or too close lower index.
+    let (i, lower) = (1..pts.len())
+        .map(|i| (i, &pts[..i]))
+        .find(|&(i, lower)| lower.iter().any(|&q| too_close(pts[i], q)))
+        .unwrap();
+    let want = if pts.len() < 4 {
+        HullError::TooFewSites
+    } else if lower.contains(&pts[i]) {
+        HullError::Duplicate(i)
+    } else {
+        HullError::TooClose(i)
+    };
     for (name, f, _) in BACKENDS {
-        assert_eq!(
-            f(&pts),
-            Err(hull::HullError::Duplicate(first.unwrap())),
-            "{name}"
-        );
+        assert_eq!(f(&pts), Err(want), "{name}");
     }
 }
 
@@ -306,7 +318,7 @@ fn cospherical_and_duplicate_sites() {
         assert_delaunay(&ico, &f(&ico).unwrap(), name, tolerance);
         let mut dup = ico.clone();
         dup.push(dup[3]);
-        assert_eq!(f(&dup), Err(hull::HullError::Duplicate(12)), "{name}");
+        assert_eq!(f(&dup), Err(HullError::Duplicate(12)), "{name}");
     }
 }
 

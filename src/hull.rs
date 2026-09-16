@@ -13,16 +13,22 @@ use spade::handles::FixedVertexHandle;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+/// Sites must be at least this far apart, in radians (0.64 m on the Earth).
+pub const MIN_SEPARATION: f64 = 1e-7;
+
 /// Error from [`sphere_delaunay`] and [`sphere_delaunay_geo`].
+///
+/// For [`Duplicate`](Self::Duplicate) and [`TooClose`](Self::TooClose), `i` is
+/// the lowest index of a site that equals, or is closer than
+/// [`MIN_SEPARATION`] to, a site with a lower index. Both functions report
+/// the same index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HullError {
     /// Fewer than four distinct, non-coplanar sites.
     TooFewSites,
-    /// Site `i` is the first site equal to an earlier site.
+    /// Site `i` equals a site with a lower index.
     Duplicate(usize),
-    /// Site `i` is within rounding of an earlier site: it fell inside the hull
-    /// ([`sphere_delaunay`]) or has the same projected coordinates
-    /// ([`sphere_delaunay_geo`]). Sites must be about a metre or more apart.
+    /// Site `i` is closer than [`MIN_SEPARATION`] to a site with a lower index.
     TooClose(usize),
     /// The planar triangulator rejected a projected coordinate: spade accepts
     /// finite magnitudes up to 2^201.
@@ -34,7 +40,7 @@ impl fmt::Display for HullError {
         match self {
             Self::TooFewSites => write!(f, "fewer than four distinct, non-coplanar sites"),
             Self::Duplicate(i) => write!(f, "site {i} equals an earlier site"),
-            Self::TooClose(i) => write!(f, "site {i} is within rounding of an earlier site"),
+            Self::TooClose(i) => write!(f, "site {i} is too close to an earlier site"),
             Self::Projection => write!(f, "a projected site coordinate is out of range"),
         }
     }
@@ -69,21 +75,20 @@ fn sees(pts: &[V3], [a, b, c]: [u32; 3], p: V3) -> bool {
 /// [`HullError::TooFewSites`], [`HullError::Duplicate`] or
 /// [`HullError::TooClose`] as described there.
 pub fn sphere_delaunay(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
-    let n = pts.len();
-    // Three distinct sphere points are never collinear, so we only need a
-    // fourth point off their plane.
-    let i1 = (1..n)
-        .find(|&i| pts[i] != pts[0])
-        .ok_or(HullError::TooFewSites)?;
-    let i2 = (i1 + 1..n)
-        .find(|&i| pts[i] != pts[0] && pts[i] != pts[i1])
-        .ok_or(HullError::TooFewSites)?;
-    let (a, b, c) = (c3(pts[0]), c3(pts[i1]), c3(pts[i2]));
-    let i3 = (i2 + 1..n)
+    if pts.len() < 4 {
+        return Err(HullError::TooFewSites);
+    }
+    if let Some(e) = separation_error(pts) {
+        return Err(e);
+    }
+    // Three separated sphere points are not collinear, so a fourth point off
+    // their plane completes the first tetrahedron.
+    let (a, b, c) = (c3(pts[0]), c3(pts[1]), c3(pts[2]));
+    let i3 = (3..pts.len())
         .find(|&i| orient3d(a, b, c, c3(pts[i])) != 0.0)
         .ok_or(HullError::TooFewSites)?;
 
-    let t = [0u32, i1 as u32, i2 as u32, i3 as u32];
+    let t = [0, 1, 2, i3 as u32];
     let mut faces: Vec<[u32; 3]> = [[0, 1, 2], [0, 3, 1], [1, 3, 2], [2, 3, 0]]
         .iter()
         .map(|f| [t[f[0]], t[f[1]], t[f[2]]])
@@ -97,18 +102,15 @@ pub fn sphere_delaunay(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
 
     let mut visible_edges = HashSet::new();
     for (i, &p) in pts.iter().enumerate() {
-        if i == 0 || i == i1 || i == i2 || i == i3 {
+        if i < 3 || i == i3 {
             continue;
         }
         let (vis, keep): (Vec<[u32; 3]>, Vec<[u32; 3]>) =
             faces.iter().partition(|&&f| sees(pts, f, p));
         if vis.is_empty() {
-            let dup = pts[..i].contains(&p);
-            return Err(if dup {
-                HullError::Duplicate(i)
-            } else {
-                HullError::TooClose(i)
-            });
+            // Rounding put the site inside the hull. Separated sites do not
+            // cause this.
+            return Err(HullError::TooClose(i));
         }
         visible_edges.clear();
         for &[a, b, c] in &vis {
@@ -131,8 +133,7 @@ pub fn sphere_delaunay(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
 /// plane, then join site 0 to the planar convex hull.
 ///
 /// Predicates are exact on the *projected* coordinates, so cospherical ties
-/// may break differently from [`sphere_delaunay`], and distinct sites with
-/// equal projected coordinates are reported as [`HullError::TooClose`].
+/// may break differently from [`sphere_delaunay`].
 ///
 /// # Errors
 ///
@@ -140,9 +141,6 @@ pub fn sphere_delaunay(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
 pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
     if pts.len() < 4 {
         return Err(HullError::TooFewSites);
-    }
-    if let Some(i) = first_duplicate(pts) {
-        return Err(HullError::Duplicate(i));
     }
     // Insert in Morton order: spade walks from the previous insertion, so
     // spatially coherent input keeps each walk short.
@@ -156,17 +154,33 @@ pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
         .iter()
         .map(|&i| Point::from(frame.map(pts[i as usize]).map(snap_to_zero)))
         .collect();
+    // Sites too close to one another cause the failures below; other failures
+    // are projection failures.
+    let close_or_projection = || separation_error(pts).unwrap_or(HullError::Projection);
+    // Sites near site 0 do not project accurately, so check them here.
+    if pts[1..].iter().any(|&p| too_close(p, pts[0])) {
+        return Err(close_or_projection());
+    }
     let dt = plane
         .unconstrained_triangulation_raw()
-        .map_err(|_| HullError::Projection)?;
-    if dt.num_vertices() != order.len() {
-        return Err(HullError::TooClose(first_coincident(&order, &plane.0)));
+        .map_err(|_| close_or_projection())?;
+    // spade vertex k is the k-th inserted site
+    let id = |v: FixedVertexHandle| order[v.index()];
+    let short = |a: u32, b: u32| too_close(pts[a as usize], pts[b as usize]);
+    // Each site's nearest neighbour is a Delaunay neighbour, so other sites
+    // that are too close give a merged vertex or a short planar edge.
+    let merged = dt.num_vertices() != order.len();
+    if merged
+        || dt.undirected_edges().any(|e| {
+            let [a, b] = e.vertices().map(|v| id(v.fix()));
+            short(a, b)
+        })
+    {
+        return Err(close_or_projection());
     }
     if dt.all_vertices_on_line() {
         return Err(HullError::TooFewSites);
     }
-    // spade vertex k is the k-th inserted site
-    let id = |v: FixedVertexHandle| order[v.index()];
     let mut tris: Vec<[u32; 3]> = dt
         .inner_faces()
         .map(|f| f.vertices().map(|v| id(v.fix())))
@@ -190,29 +204,37 @@ fn snap_to_zero(c: f64) -> f64 {
     }
 }
 
-/// Bit patterns of `coords`, with `-0.0` as `0.0` so that equal keys mean `==`.
-fn bits<const N: usize>(coords: [f64; N]) -> [u64; N] {
-    coords.map(|c| (c + 0.0).to_bits())
+/// The error for the lowest site index that equals, or is closer than
+/// `MIN_SEPARATION` to, a lower index.
+fn separation_error(pts: &[V3]) -> Option<HullError> {
+    // Sites closer than MIN_SEPARATION are in the same or adjacent boxes.
+    let key = |p: V3| [p.x, p.y, p.z].map(|c| (c / MIN_SEPARATION).floor() as i64);
+    let mut boxes: HashMap<[i64; 3], Vec<usize>> = HashMap::new();
+    for (i, &p) in pts.iter().enumerate() {
+        let [x, y, z] = key(p);
+        let adjacent = (x - 1..=x + 1).flat_map(|x| {
+            (y - 1..=y + 1).flat_map(move |y| (z - 1..=z + 1).map(move |z| [x, y, z]))
+        });
+        let mut close = false;
+        for j in adjacent.filter_map(|k| boxes.get(&k)).flatten() {
+            if pts[*j] == p {
+                return Some(HullError::Duplicate(i));
+            }
+            close |= too_close(pts[*j], p);
+        }
+        if close {
+            return Some(HullError::TooClose(i));
+        }
+        boxes.entry([x, y, z]).or_default().push(i);
+    }
+    None
 }
 
-/// The lowest site index whose projected coordinates equal those of a lower
-/// index. spade merges such sites; `order[k]` is the site at `plane[k]`.
-fn first_coincident(order: &[u32], plane: &[Point]) -> usize {
-    // For each position, the lowest index seen so far.
-    let mut lowest: HashMap<[u64; 2], u32> = HashMap::new();
-    let later = order.iter().zip(plane).filter_map(|(&i, q)| {
-        let j = lowest.entry(bits([q.x(), q.y()])).or_insert(i);
-        let later = (*j != i).then(|| i.max(*j));
-        *j = (*j).min(i);
-        later
-    });
-    later.min().expect("spade merges only equal coordinates") as usize
-}
-
-/// Index of the first site equal to an earlier site.
-fn first_duplicate(pts: &[V3]) -> Option<usize> {
-    let mut seen = HashSet::with_capacity(pts.len());
-    pts.iter().position(|p| !seen.insert(bits([p.x, p.y, p.z])))
+/// `true` if `a` and `b` are closer than `MIN_SEPARATION`. At that distance
+/// the chord equals the arc to within rounding.
+fn too_close(a: V3, b: V3) -> bool {
+    let d = a - b;
+    d.dot(d) < MIN_SEPARATION * MIN_SEPARATION
 }
 
 /// Interleaved 21-bit quantisations of a unit vector's components.
@@ -224,16 +246,4 @@ fn morton(v: V3) -> u64 {
             | ((y >> b) & 1) << (3 * b + 1)
             | ((z >> b) & 1) << (3 * b + 2)
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn first_coincident_is_the_second_lowest_index_of_a_group() {
-        let (p, q) = (Point::new(1.0, 2.0), Point::new(-0.0, 3.0));
-        let plane = [p, q, p, Point::new(0.0, 3.0), p];
-        assert_eq!(first_coincident(&[7, 8, 4, 5, 2], &plane), 4);
-    }
 }
