@@ -44,6 +44,41 @@ the ellipsoid. Points are supported; line and region objects are not yet.
   antimeridian. See [`examples/hull_bench.rs`](examples/hull_bench.rs) for
   timings, and the drawing in [`examples/coast.rs`](examples/coast.rs).
 
+## Trade-offs
+
+- **Sphere, not ellipsoid.** Distances, cap radii and cell sizes use a sphere
+  of radius 6,371 km. Against the WGS84 ellipsoid a distance can be wrong by
+  up to about 0.5%. Encoding does not depend on the shape: a decoded point
+  has the latitude and longitude that were encoded, to within the error given
+  under "Size limits".
+- **Cells depend on the data.** The cells, and their identifiers, come from
+  the centres you build with. A different data set or capacity gives
+  different cells, and a `Local` value decodes correctly only against the
+  structure that encoded it. Fixed global grids such as S2 or H3 give every
+  data set the same cell identifiers; use one of those to join data sets by
+  cell.
+- **No incremental updates.** New centres mean a new structure, and all
+  stored `Local` values must be encoded again. `adaptive` rebuilds the
+  structure on each round (26 ms in total for the 52,766 coastline
+  vertices), so it suits data that changes in batches, not continuously.
+- **Points only.** There are no line or polygon objects: no clipping,
+  point-in-polygon tests or joins against regions. `geo` provides these in
+  the plane.
+- **Candidate queries.** `cells_in_cap` returns the cells that a circle can
+  touch; you decode their points and test the distance yourself. There is no
+  nearest-neighbour query. For data in one region, a projected coordinate
+  system with an R-tree such as `rstar` is simpler.
+- **Size limits.** Centres must be at least 0.64 m apart
+  (`hull::MIN_SEPARATION`), and a cell radius cannot exceed π/2, about
+  10,000 km (`cells::MAX_CELL_RADIUS`), so sparse data needs enough seed
+  centres. The adaptive builder cannot separate points less than about 10 cm
+  apart, so a cluster of such points can exceed the capacity. The encoding
+  error is below 1 mm in cells up to about 2,800 km in radius, and at most
+  4.5 mm in the widest cells.
+- **No storage format.** The builder holds all points in memory, and you
+  store the `Local` values yourself.
+- **Experimental.** Expect the API to change.
+
 ## Contents
 
 | Module | Purpose |
