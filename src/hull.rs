@@ -5,8 +5,11 @@
 //! - [`sphere_delaunay`]: incremental 3D convex hull with exact
 //!   `orient3d`. O(n²); kept as the reference implementation.
 
-use crate::algebra::V3;
+use crate::algebra::{Frame, V3};
+use geo::{MultiPoint, Point, TriangulateDelaunayUnconstrained};
 use robust::{Coord3D, orient3d};
+use spade::Triangulation;
+use spade::handles::FixedVertexHandle;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, PartialEq)]
@@ -66,7 +69,9 @@ pub fn sphere_delaunay(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
         .collect();
     if sees(pts, faces[0], pts[i3]) {
         // wrong handedness: flip every face
-        faces.iter_mut().for_each(|f| f.swap(1, 2));
+        for f in &mut faces {
+            f.swap(1, 2);
+        }
     }
 
     let mut visible_edges = HashSet::new();
@@ -105,13 +110,9 @@ pub fn sphere_delaunay(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
 /// plane, then join site 0 to the planar convex hull.
 ///
 /// Predicates are exact on the *projected* coordinates, so cospherical ties
-/// may break differently from [`sphere_delaunay`], and sites within rounding
-/// of one another are reported as [`HullError::TooClose`].
+/// may break differently from [`sphere_delaunay`], and distinct sites with
+/// equal projected coordinates are reported as [`HullError::TooClose`].
 pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
-    use crate::algebra::Frame;
-    use geo::{MultiPoint, Point, TriangulateDelaunayUnconstrained};
-    use spade::Triangulation;
-
     if pts.len() < 4 {
         return Err(HullError::TooFewSites);
     }
@@ -126,33 +127,21 @@ pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
     // Tangent at the antipode of site 0 = projection from site 0. The frame
     // is right-handed seen from outside, so planar CCW == spherical CCW.
     let frame = Frame::new(-pts[0]);
-    let mut plane = Vec::with_capacity(order.len());
-    for &i in &order {
-        let [x, y] = frame.map(pts[i as usize]).map(snap_to_zero);
-        plane.push(Point::new(x, y));
-    }
-    let dt = MultiPoint::new(plane.clone())
+    let plane: MultiPoint = order
+        .iter()
+        .map(|&i| Point::from(frame.map(pts[i as usize]).map(snap_to_zero)))
+        .collect();
+    let dt = plane
         .unconstrained_triangulation_raw()
         .map_err(|_| HullError::Projection)?;
     if dt.num_vertices() != order.len() {
-        // spade merged distinct sites with equal projected coordinates:
-        // report the lowest index that coincides with an earlier site
-        let mut seen = HashMap::new();
-        let mut first = u32::MAX;
-        for (&i, q) in order.iter().zip(&plane) {
-            if let Some(&j) = seen.get(&bits([q.x(), q.y()])) {
-                first = first.min(i.max(j));
-            } else {
-                seen.insert(bits([q.x(), q.y()]), i);
-            }
-        }
-        return Err(HullError::TooClose(first as usize));
+        return Err(HullError::TooClose(first_coincident(&order, &plane.0)));
     }
     if dt.all_vertices_on_line() {
         return Err(HullError::TooFewSites);
     }
     // spade vertex k is the k-th inserted site
-    let id = |v: spade::handles::FixedVertexHandle| order[v.index()];
+    let id = |v: FixedVertexHandle| order[v.index()];
     let mut tris: Vec<[u32; 3]> = dt
         .inner_faces()
         .map(|f| f.vertices().map(|v| id(v.fix())))
@@ -181,6 +170,20 @@ fn bits<const N: usize>(coords: [f64; N]) -> [u64; N] {
     coords.map(|c| (c + 0.0).to_bits())
 }
 
+/// The lowest site index whose projected coordinates equal those of a lower
+/// index. spade merges such sites; `order[k]` is the site at `plane[k]`.
+fn first_coincident(order: &[u32], plane: &[Point]) -> usize {
+    // For each position, the lowest index seen so far.
+    let mut lowest: HashMap<[u64; 2], u32> = HashMap::new();
+    let later = order.iter().zip(plane).filter_map(|(&i, q)| {
+        let j = lowest.entry(bits([q.x(), q.y()])).or_insert(i);
+        let later = (*j != i).then(|| i.max(*j));
+        *j = (*j).min(i);
+        later
+    });
+    later.min().expect("spade merges only equal coordinates") as usize
+}
+
 /// Index of the first site equal to an earlier site.
 fn first_duplicate(pts: &[V3]) -> Option<usize> {
     let mut seen = HashSet::with_capacity(pts.len());
@@ -196,4 +199,16 @@ fn morton(v: V3) -> u64 {
             | ((y >> b) & 1) << (3 * b + 1)
             | ((z >> b) & 1) << (3 * b + 2)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_coincident_is_the_second_lowest_index_of_a_group() {
+        let (p, q) = (Point::new(1.0, 2.0), Point::new(-0.0, 3.0));
+        let plane = [p, q, p, Point::new(0.0, 3.0), p];
+        assert_eq!(first_coincident(&[7, 8, 4, 5, 2], &plane), 4);
+    }
 }
