@@ -1,0 +1,15 @@
+[package]
+name = "hipparchus-rs"
+version = "0.1.0"
+edition = "2024"
+description = "A Rust reimplementation of Lukatela's Hipparchus geopositioning model: direction cosines and data-adaptive spherical Voronoi cells"
+license = "BlueOak-1.0.0"
+readme = "README.md"
+keywords = ["geospatial", "voronoi", "delaunay", "sphere", "geodesy"]
+categories = ["science::geo", "algorithms"]
+exclude = ["tools/"]
+
+[dependencies]
+geo = "0.33.1"
+robust = "1.2.0"
+spade = "2.10"
