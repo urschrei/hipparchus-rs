@@ -62,6 +62,19 @@ impl V3 {
         self * (1.0 / self.norm())
     }
     /// From geodetic-style degrees (treated as geocentric, as in the original).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipparchus_rs::V3;
+    ///
+    /// let p = V3::from_lat_lon(53.35, -6.26);
+    /// assert!((p.norm() - 1.0).abs() < 1e-15);
+    ///
+    /// let (lat, lon) = p.lat_lon();
+    /// assert!((lat - 53.35).abs() < 1e-12);
+    /// assert!((lon + 6.26).abs() < 1e-12);
+    /// ```
     pub fn from_lat_lon(lat: f64, lon: f64) -> Self {
         let (lat, lon) = (lat.to_radians(), lon.to_radians());
         Self::new(lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin())
@@ -113,6 +126,17 @@ impl From<V3> for geo::Point<f64> {
 }
 
 /// Great-circle angle in radians; well conditioned for all separations.
+///
+/// # Examples
+///
+/// ```
+/// use hipparchus_rs::{EARTH_RADIUS, V3, arc};
+///
+/// let dublin = V3::from_lat_lon(53.35, -6.26);
+/// let london = V3::from_lat_lon(51.51, -0.13);
+/// let km = arc(dublin, london) * EARTH_RADIUS / 1e3;
+/// assert!((km - 463.0).abs() < 0.1);
+/// ```
 pub fn arc(a: V3, b: V3) -> f64 {
     a.cross(b).norm().atan2(a.dot(b))
 }
@@ -137,6 +161,20 @@ pub fn plane_extent(r: f64) -> f64 {
 /// The original divides by `hypot(x, y)` and fails at the poles. Here a pole
 /// gets a fixed frame (east = +Y). The frame is a deterministic function of
 /// the centre, so data encoded against a stored centre always round-trips.
+///
+/// # Examples
+///
+/// ```
+/// use hipparchus_rs::{Frame, V3, arc};
+///
+/// let frame = Frame::new(V3::from_lat_lon(90.0, 0.0));
+/// let p = V3::from_lat_lon(89.0, 45.0);
+/// let [e, n] = frame.map(p);
+/// assert!(arc(frame.unmap([e, n]), p) < 1e-12);
+///
+/// // A plane distance from the centre is not less than the arc.
+/// assert!(e.hypot(n) >= arc(frame.centre(), p));
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Frame {
     centre: V3,

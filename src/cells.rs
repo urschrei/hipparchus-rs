@@ -154,6 +154,22 @@ impl CellStructure {
     ///
     /// [`BuildError::Hull`] if the centres cannot be triangulated, and
     /// [`BuildError::CellTooLarge`] if a cell is too wide.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipparchus_rs::{BuildError, CellStructure, HullError, build};
+    ///
+    /// let cells = CellStructure::new(build::fibonacci(100))?;
+    /// assert_eq!(cells.len(), 100);
+    ///
+    /// let too_few = CellStructure::new(build::fibonacci(3));
+    /// assert_eq!(
+    ///     too_few.unwrap_err(),
+    ///     BuildError::Hull(HullError::TooFewSites)
+    /// );
+    /// # Ok::<(), BuildError>(())
+    /// ```
     pub fn new(centres: Vec<V3>) -> Result<Self, BuildError> {
         let tris = sphere_delaunay_geo(&centres)?;
         let n = centres.len();
@@ -233,26 +249,46 @@ impl CellStructure {
         &self.centres
     }
     /// Centre of cell `c`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `c` is not less than [`len`](Self::len).
     pub fn centre(&self, c: CellId) -> V3 {
         self.centres[c.index()]
     }
     /// Largest arc from the centre of cell `c` to a point of the cell, in
     /// radians.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `c` is not less than [`len`](Self::len).
     pub fn radius(&self, c: CellId) -> f64 {
         self.radius[c.index()]
     }
     /// Cells that share an edge with cell `c`, counter-clockwise seen from
     /// outside.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `c` is not less than [`len`](Self::len).
     pub fn neighbours(&self, c: CellId) -> &[CellId] {
         &self.neighbours[c.index()]
     }
     /// Voronoi vertices of cell `c`. Vertex `k` is between neighbours `k` and
     /// `k + 1`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `c` is not less than [`len`](Self::len).
     pub fn vertices(&self, c: CellId) -> &[V3] {
         &self.vertices[c.index()]
     }
     /// Plane distance of one local unit in cell `c`, in radians. The ground
     /// distance is not more than this.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `c` is not less than [`len`](Self::len).
     pub fn resolution(&self, c: CellId) -> f64 {
         1.0 / self.scale[c.index()]
     }
@@ -260,6 +296,28 @@ impl CellStructure {
     /// Greedy walk from cell `start` to the cell whose centre is nearest to
     /// `p`. Returns the cell and the number of moves. Correct on a Delaunay
     /// graph; uses the dot product as a monotone proxy for distance.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `start` is not less than [`len`](Self::len).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipparchus_rs::{CellId, CellStructure, V3, arc, build};
+    ///
+    /// let cells = CellStructure::new(build::fibonacci(100))?;
+    /// let p = V3::from_lat_lon(53.35, -6.26);
+    /// let (home, _steps) = cells.home_cell(p, CellId(0));
+    ///
+    /// // No centre is nearer to `p` than the centre of its home cell.
+    /// let d = arc(p, cells.centre(home));
+    /// assert!(cells.centres().iter().all(|&c| arc(p, c) >= d));
+    ///
+    /// // A walk that starts in the home cell takes no steps.
+    /// assert_eq!(cells.home_cell(p, home), (home, 0));
+    /// # Ok::<(), hipparchus_rs::BuildError>(())
+    /// ```
     pub fn home_cell(&self, p: V3, start: CellId) -> (CellId, usize) {
         let (mut cur, mut steps) = (start, 0);
         let mut best = p.dot(self.centre(cur));
@@ -281,6 +339,28 @@ impl CellStructure {
     /// Cells that may intersect the cap of `radius` (radians) around `centre`:
     /// a breadth-first search outward from the cap centre's home cell, which
     /// the walk finds from cell `hint`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `hint` is not less than [`len`](Self::len).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipparchus_rs::{CellId, CellStructure, EARTH_RADIUS, V3, build};
+    ///
+    /// let cells = CellStructure::new(build::fibonacci(1000))?;
+    /// let dublin = V3::from_lat_lon(53.35, -6.26);
+    /// let radius = 250e3 / EARTH_RADIUS; // 250 km in radians
+    /// let found = cells.cells_in_cap(dublin, radius, CellId(0));
+    ///
+    /// // Belfast (141 km) and Cork (220 km) are in cells that were found.
+    /// for (lat, lon) in [(54.60, -5.93), (51.90, -8.47)] {
+    ///     let (home, _) = cells.home_cell(V3::from_lat_lon(lat, lon), CellId(0));
+    ///     assert!(found.contains(&home));
+    /// }
+    /// # Ok::<(), hipparchus_rs::BuildError>(())
+    /// ```
     pub fn cells_in_cap(&self, centre: V3, radius: f64, hint: CellId) -> Vec<CellId> {
         let (home, _) = self.home_cell(centre, hint);
         let mut seen = vec![false; self.len()];
@@ -303,6 +383,26 @@ impl CellStructure {
 
     /// Encodes `p` in its home cell, walking from cell `hint`. For sequential
     /// points, the cell of the previous point is a good hint.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `hint` is not less than [`len`](Self::len).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipparchus_rs::{CellId, CellStructure, EARTH_RADIUS, V3, arc, build};
+    ///
+    /// let cells = CellStructure::new(build::fibonacci(100))?;
+    /// let p = V3::from_lat_lon(53.35, -6.26);
+    /// let local = cells.encode(p, CellId(0));
+    /// assert_eq!(size_of_val(&local), 12);
+    ///
+    /// let back = cells.decode(local);
+    /// assert!(arc(p, back) <= cells.resolution(local.cell));
+    /// assert!(arc(p, back) * EARTH_RADIUS < 1e-3); // less than 1 mm
+    /// # Ok::<(), hipparchus_rs::BuildError>(())
+    /// ```
     pub fn encode(&self, p: V3, hint: CellId) -> Local {
         let (cell, _) = self.home_cell(p, hint);
         let [e, n] = self.frames[cell.index()].map(p);
@@ -314,7 +414,12 @@ impl CellStructure {
         }
     }
 
-    /// The point that `l` encodes.
+    /// The point that `l` encodes. See [`encode`](Self::encode) for an
+    /// example.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `l.cell` is not less than [`len`](Self::len).
     pub fn decode(&self, l: Local) -> V3 {
         let s = self.resolution(l.cell);
         self.frames[l.cell.index()].unmap([l.e as f64 * s, l.n as f64 * s])

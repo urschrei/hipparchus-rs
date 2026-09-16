@@ -81,6 +81,27 @@ pub struct Report {
 ///
 /// [`BuildError`] if a structure does not build: for example, if `seeds` is
 /// less than four or a split puts two centres too close together.
+///
+/// # Examples
+///
+/// ```
+/// use hipparchus_rs::{CellId, V3, build};
+///
+/// // 1,600 points on a grid over Ireland and Great Britain.
+/// let pts: Vec<V3> = (0..40)
+///     .flat_map(|i| (0..40).map(move |j| (50.0 + 0.2 * i as f64, -10.0 + 0.3 * j as f64)))
+///     .map(|(lat, lon)| V3::from_lat_lon(lat, lon))
+///     .collect();
+/// let (cells, report) = build::adaptive(&pts, 100, 12)?;
+/// assert!(report.load.iter().all(|&n| n <= 100));
+/// assert_eq!(report.load.iter().sum::<usize>(), pts.len());
+///
+/// // Cells over the points are smaller than cells over the empty Pacific.
+/// let (dense, _) = cells.home_cell(pts[0], CellId(0));
+/// let (empty, _) = cells.home_cell(V3::from_lat_lon(-40.0, -120.0), dense);
+/// assert!(cells.radius(dense) < cells.radius(empty));
+/// # Ok::<(), hipparchus_rs::BuildError>(())
+/// ```
 pub fn adaptive(
     pts: &[V3],
     capacity: usize,

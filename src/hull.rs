@@ -154,6 +154,35 @@ pub fn sphere_delaunay(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
 /// # Errors
 ///
 /// Any [`HullError`], as described there.
+///
+/// # Examples
+///
+/// ```
+/// use hipparchus_rs::{HullError, V3, hull};
+///
+/// // The vertices of an octahedron.
+/// let sites = [
+///     V3::new(1.0, 0.0, 0.0),
+///     V3::new(-1.0, 0.0, 0.0),
+///     V3::new(0.0, 1.0, 0.0),
+///     V3::new(0.0, -1.0, 0.0),
+///     V3::new(0.0, 0.0, 1.0),
+///     V3::new(0.0, 0.0, -1.0),
+/// ];
+/// let tris = hull::sphere_delaunay_geo(&sites)?;
+/// assert_eq!(tris.len(), 8);
+///
+/// // Each triangle is counter-clockwise seen from outside.
+/// for [a, b, c] in tris.iter().map(|t| t.map(|i| sites[i as usize])) {
+///     assert!((b - a).cross(c - a).dot(a) > 0.0);
+/// }
+///
+/// assert_eq!(
+///     hull::sphere_delaunay_geo(&sites[..3]),
+///     Err(HullError::TooFewSites)
+/// );
+/// # Ok::<(), HullError>(())
+/// ```
 pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
     if pts.len() < 4 {
         return Err(HullError::TooFewSites);
