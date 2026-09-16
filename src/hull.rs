@@ -132,8 +132,10 @@ pub fn sphere_delaunay(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
 /// from site 0 (circles stay circles), triangulate the other sites in the
 /// plane, then join site 0 to the planar convex hull.
 ///
-/// Predicates are exact on the *projected* coordinates, so cospherical ties
-/// may break differently from [`sphere_delaunay`].
+/// spade's predicates are exact on the projected coordinates. Exact 3D edge
+/// flips then correct the result, so it is Delaunay on the sites themselves;
+/// only exactly cospherical ties can break differently from
+/// [`sphere_delaunay`].
 ///
 /// # Errors
 ///
@@ -191,7 +193,70 @@ pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
         dt.convex_hull()
             .map(|e| [id(e.from().fix()), id(e.to().fix()), 0]),
     );
+
+    // spade's predicates are exact on the projected coordinates only. Find the
+    // edges where a site sees the face across the edge in the exact 3D test.
+    // The outer planar face is the fan around site 0.
+    let site = |v: Option<FixedVertexHandle>| v.map_or(0, id);
+    let mut reflex: Vec<(u32, u32)> = dt
+        .undirected_edges()
+        .filter_map(|e| {
+            let d = e.as_directed();
+            let [a, b] = [d.from(), d.to()].map(|v| id(v.fix()));
+            let [left, right] = [d, d.rev()].map(|d| site(d.opposite_vertex().map(|v| v.fix())));
+            sees(pts, [a, b, left], pts[right as usize]).then_some((a, b))
+        })
+        .collect();
+    // Consecutive hull vertices u, v, w give the fan faces (u, v, 0) and
+    // (v, w, 0), which share the edge (v, 0).
+    let hull: Vec<u32> = dt.convex_hull().map(|e| id(e.from().fix())).collect();
+    for (k, &v) in hull.iter().enumerate() {
+        let u = hull[(k + hull.len() - 1) % hull.len()];
+        let w = hull[(k + 1) % hull.len()];
+        if sees(pts, [u, v, 0], pts[w as usize]) {
+            reflex.push((v, 0));
+        }
+    }
+    if !reflex.is_empty() {
+        flip_reflex_edges(pts, &mut tris, reflex);
+    }
     Ok(tris)
+}
+
+/// Flips edges of `tris`, starting from the directed edges in `stack`, until
+/// no site sees the face across an edge. Each flip adds a tetrahedron to the
+/// enclosed solid, so the flips stop.
+fn flip_reflex_edges(pts: &[V3], tris: &mut [[u32; 3]], mut stack: Vec<(u32, u32)>) {
+    let mut face = HashMap::with_capacity(3 * tris.len());
+    for (t, &[a, b, c]) in tris.iter().enumerate() {
+        face.extend([((a, b), t), ((b, c), t), ((c, a), t)]);
+    }
+    let third = |[x, y, z]: [u32; 3], a: u32, b: u32| {
+        if x != a && x != b {
+            x
+        } else if y != a && y != b {
+            y
+        } else {
+            z
+        }
+    };
+    while let Some((a, b)) = stack.pop() {
+        let (Some(&t1), Some(&t2)) = (face.get(&(a, b)), face.get(&(b, a))) else {
+            continue;
+        };
+        // Faces (a, b, c) and (b, a, d) become (a, d, c) and (d, b, c). The
+        // flip must not repeat the edge (c, d).
+        let (c, d) = (third(tris[t1], a, b), third(tris[t2], a, b));
+        if face.contains_key(&(c, d)) || !sees(pts, [a, b, c], pts[d as usize]) {
+            continue;
+        }
+        tris[t1] = [a, d, c];
+        tris[t2] = [d, b, c];
+        face.remove(&(a, b));
+        face.remove(&(b, a));
+        face.extend([((a, d), t1), ((d, c), t1), ((b, c), t2), ((c, d), t2)]);
+        stack.extend([(a, d), (d, b), (b, c), (c, a)]);
+    }
 }
 
 /// spade rejects non-zero magnitudes below `MIN_ALLOWED_VALUE` (2^-142). Such

@@ -171,16 +171,10 @@ fn frame_maps_arc_to_plane_extent(tc: TestCase) {
     assert!((e.hypot(n) - want).abs() <= 1e-14 * (1.0 + want));
 }
 
-/// Largest `orient3d` magnitude that rounding in the projected coordinates
-/// can give the wrong sign.
-const PROJECTION_ROUNDING: f64 = 1e-14;
-
 type Backend = fn(&[V3]) -> Result<Vec<[u32; 3]>, HullError>;
-/// Each backend with the `orient3d` tolerance its predicates give: the geo
-/// backend is exact on projected coordinates only.
-const BACKENDS: [(&str, Backend, f64); 2] = [
-    ("robust", hull::sphere_delaunay, 0.0),
-    ("geo", hull::sphere_delaunay_geo, PROJECTION_ROUNDING),
+const BACKENDS: [(&str, Backend); 2] = [
+    ("robust", hull::sphere_delaunay),
+    ("geo", hull::sphere_delaunay_geo),
 ];
 
 fn c3(v: V3) -> robust::Coord3D<f64> {
@@ -191,7 +185,7 @@ fn c3(v: V3) -> robust::Coord3D<f64> {
     }
 }
 
-fn assert_delaunay(pts: &[V3], tris: &[[u32; 3]], name: &str, tolerance: f64) {
+fn assert_delaunay(pts: &[V3], tris: &[[u32; 3]], name: &str) {
     assert_eq!(tris.len(), 2 * pts.len() - 4, "{name}: Euler");
     // The faces form a closed surface: each directed edge occurs once, and so
     // does its reverse.
@@ -202,12 +196,11 @@ fn assert_delaunay(pts: &[V3], tris: &[[u32; 3]], name: &str, tolerance: f64) {
         "{name}: open edge"
     );
     // Outward CCW, and empty circumcircle == no site strictly outside a face.
-    let outside = |o: f64| o < -tolerance;
     for &[a, b, d] in tris {
         let (a, b, d) = (pts[a as usize], pts[b as usize], pts[d as usize]);
         assert!(
             pts.iter()
-                .all(|&p| !outside(robust::orient3d(c3(a), c3(b), c3(d), c3(p)))),
+                .all(|&p| robust::orient3d(c3(a), c3(b), c3(d), c3(p)) >= 0.0),
             "{name}: site outside a face"
         );
     }
@@ -219,18 +212,18 @@ fn edges(tris: &[[u32; 3]]) -> BTreeSet<(u32, u32)> {
         .collect()
 }
 
-/// `true` if the site opposite some edge lies on, or within rounding of, the
-/// circumcircle of the face across that edge, so that the geo backend can
-/// flip the edge.
-fn has_near_tie(pts: &[V3], tris: &[[u32; 3]]) -> bool {
+/// `true` if the site opposite some edge lies on the circumcircle of the face
+/// across that edge, so that flipping the edge gives another Delaunay
+/// triangulation.
+fn has_tie(pts: &[V3], tris: &[[u32; 3]]) -> bool {
     let opposite: HashMap<(u32, u32), u32> = tris
         .iter()
         .flat_map(|&[a, b, c]| [((a, b), c), ((b, c), a), ((c, a), b)])
         .collect();
     let p = |i: u32| c3(pts[i as usize]);
-    opposite.iter().any(|(&(a, b), &c)| {
-        robust::orient3d(p(a), p(b), p(c), p(opposite[&(b, a)])).abs() <= PROJECTION_ROUNDING
-    })
+    opposite
+        .iter()
+        .any(|(&(a, b), &c)| robust::orient3d(p(a), p(b), p(c), p(opposite[&(b, a)])) == 0.0)
 }
 
 #[test]
@@ -242,29 +235,47 @@ fn clustered_sites_triangulate() {
         .map(|_| (V3::from_lat_lon(53.3, -6.3) + rng.sphere() * 1.5e-4).normalized())
         .collect();
     pts.extend((0..200).map(|_| rng.sphere()));
-    for (name, f, tolerance) in BACKENDS {
-        assert_delaunay(&pts, &f(&pts).unwrap(), name, tolerance);
+    for (name, f) in BACKENDS {
+        assert_delaunay(&pts, &f(&pts).unwrap(), name);
     }
 }
 
 #[hegel::test]
 fn delaunay_backends_are_valid(tc: TestCase) {
     let pts = draw_sites(&tc, 0, 300);
-    for (name, f, tolerance) in BACKENDS {
+    for (name, f) in BACKENDS {
         if let Ok(tris) = f(&pts) {
-            assert_delaunay(&pts, &tris, name, tolerance);
+            assert_delaunay(&pts, &tris, name);
         }
     }
 }
 
+#[test]
+fn near_tie_matches_exact_backend() {
+    // The last site is within rounding of the circle through +X, +Z and +Y.
+    let pts = [
+        V3::new(1.0, 0.0, 0.0),
+        V3::new(0.0, 0.0, 1.0),
+        V3::new(0.0, 0.0, -1.0),
+        V3::new(0.0, 1.0, 0.0),
+        V3::new(-0.3333333333333333, 0.6666666666666666, 0.6666666666666666),
+    ];
+    let exact = hull::sphere_delaunay(&pts).unwrap();
+    assert!(!has_tie(&pts, &exact));
+    assert_eq!(
+        edges(&exact),
+        edges(&hull::sphere_delaunay_geo(&pts).unwrap())
+    );
+}
+
 #[hegel::test]
-fn delaunay_backends_agree_without_near_ties(tc: TestCase) {
+fn delaunay_backends_agree_without_ties(tc: TestCase) {
     let pts = draw_sites(&tc, 4, 300);
     let (Ok(exact), Ok(geo)) = (hull::sphere_delaunay(&pts), hull::sphere_delaunay_geo(&pts))
     else {
         tc.reject()
     };
-    tc.assume(!has_near_tie(&pts, &exact));
+    tc.assume(!has_tie(&pts, &exact));
     assert_eq!(edges(&exact), edges(&geo));
 }
 
@@ -292,7 +303,7 @@ fn backends_report_the_first_close_site(tc: TestCase) {
     } else {
         HullError::TooClose(i)
     };
-    for (name, f, _) in BACKENDS {
+    for (name, f) in BACKENDS {
         assert_eq!(f(&pts), Err(want), "{name}");
     }
 }
@@ -314,8 +325,8 @@ fn cospherical_and_duplicate_sites() {
     let ico: Vec<V3> = ico.into_iter().map(V3::normalized).collect();
     let cs = CellStructure::new(ico.clone()).unwrap();
     assert!((0..12).all(|c| cs.neighbours(c).len() == 5));
-    for (name, f, tolerance) in BACKENDS {
-        assert_delaunay(&ico, &f(&ico).unwrap(), name, tolerance);
+    for (name, f) in BACKENDS {
+        assert_delaunay(&ico, &f(&ico).unwrap(), name);
         let mut dup = ico.clone();
         dup.push(dup[3]);
         assert_eq!(f(&dup), Err(HullError::Duplicate(12)), "{name}");

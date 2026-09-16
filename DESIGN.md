@@ -183,6 +183,7 @@ Two backends produce it.
 6. The raw variant is used deliberately. The configured variant snaps
    coordinates within 1e-4, which on a unit-sphere plane merges sites about
    600 m apart.
+7. Exact edge flips correct the result (see "Exactness" below).
 
 Errors:
 
@@ -198,7 +199,7 @@ Errors:
 
 Separation: `MIN_SEPARATION` is 1e-7 rad (0.64 m on the Earth). Below about
 4e-8 rad, rounding can put a site inside the hull, and dot products cannot
-separate points below about 1.5e-8 rad (O6).
+separate points below about 1.5e-8 rad (O5).
 
 - A hash grid with boxes of side `MIN_SEPARATION` finds the lowest index
   that is too close to a lower index: sites closer than that are in the same
@@ -211,12 +212,24 @@ separate points below about 1.5e-8 rad (O6).
   at this length.
 
 Exactness: spade's predicates are exact on the projected floating-point
-coordinates, not on the original vectors, so near-cospherical ties can
-resolve differently from an exact 3D test. The sites +X, +Z, −Z, +Y and
-`(−1/3, 2/3, 2/3)` show this: the last site lies within rounding of the
-circle through +X, +Z and +Y, and the two backends choose different
-diagonals. The result is valid to within rounding (every `orient3d` is
-above −1e-14). See O5.
+coordinates, not on the original vectors, so spade can resolve a
+near-cospherical tie differently from an exact 3D test. The sites +X, +Z,
+−Z, +Y and `(−1/3, 2/3, 2/3)` show this: the last site lies within rounding
+of the circle through +X, +Z and +Y, and spade chooses the other diagonal
+(`near_tie_matches_exact_backend`).
+
+- After triangulation, the backend tests every edge with `orient3d` on the
+  sites, including the fan edges to `s₀`. An edge is reflex if a site sees
+  the face across it.
+- Reflex edges are flipped until none remains. Each flip adds a tetrahedron
+  to the enclosed solid, so flipping stops. A closed surface without reflex
+  edges over sites in convex position is their convex hull, so the result
+  is exactly Delaunay; only exact ties can differ from `sphere_delaunay`.
+- A flip that would repeat an edge is skipped; `delaunay_backends_are_valid`
+  checks the result.
+- The check costs about 15% at 10⁶ sites (0.46 s to 0.54 s with
+  `hull_bench` on one machine). Flips are rare, so they cost almost
+  nothing.
 
 **`sphere_delaunay` (reference).** Incremental 3D hull:
 
@@ -339,7 +352,7 @@ vertices, finding all 662 true hits.
    mean and the point farthest from that; 8 iterations).
 4. Repeat until no cell needs splitting or no overloaded cell can be split
    (its points are identical, or too close for dot products to separate;
-   see O6).
+   see O5).
 
 Limitations:
 
@@ -420,8 +433,9 @@ cases than the default 100.
 | `frame_round_trips` (P) | `unmap(map(p))` returns `p` to 1e-14 for arcs up to `MAX_CELL_RADIUS`. |
 | `frame_maps_arc_to_plane_extent` (P) | `map` puts a point at plane distance `plane_extent(arc)`, as the overflow argument of 5.7 requires. |
 | `clustered_sites_triangulate` | Both backends triangulate a 1 km cluster that contains the projection pole. |
-| `delaunay_backends_are_valid` (P) | Each result is a closed surface with 2n − 4 faces and passes the empty-circumcircle check: exactly for `sphere_delaunay`, to 1e-14 for `sphere_delaunay_geo`. |
-| `delaunay_backends_agree_without_near_ties` (P) | The backends give the same edges when no edge is within rounding of a tie. |
+| `delaunay_backends_are_valid` (P) | Each result is a closed surface with 2n − 4 faces and passes the exact empty-circumcircle check. |
+| `near_tie_matches_exact_backend` | The geo backend's flips resolve a tie within rounding as the exact backend does. |
+| `delaunay_backends_agree_without_ties` (P) | The backends give the same edges when no edge is an exact tie. |
 | `backends_report_the_first_close_site` (P) | After exact or perturbed copies of sites are inserted, both backends report the `Duplicate` or `TooClose` index that a brute-force search gives. |
 | `cospherical_and_duplicate_sites` | Icosahedron (five coplanar neighbours per vertex): valid triangulations and five-neighbour rings; duplicates reported by index. |
 | `wide_cell_is_rejected` | A cell whose farthest point lies inside an edge is rejected (5.4). |
@@ -467,9 +481,7 @@ Release build on a shared Linux sandbox; indicative only.
   expansion arithmetic would provide it.
 - O4. `CellStructure` holds `Vec<Vec<_>>` rings. A compressed layout (offsets
   plus one flat array) would suit memory mapping (R6).
-- O5. `sphere_delaunay_geo` is Delaunay only to within rounding (5.2). A pass
-  of exact `orient3d` edge flips after spade would make it exact.
-- O6. Dot products do not separate points closer than about 1.5e-8 rad
+- O5. Dot products do not separate points closer than about 1.5e-8 rad
   (10 cm), because `cos` is flat near zero. The walk and the adaptive split
   share this limit: `adaptive` keeps two points 1.5e-8 rad apart in one
   cell. The exact predicate of O3 would remove it.
@@ -652,10 +664,11 @@ this crate.
 | D3 | `i32` locals with `L = 2 × 10⁹`, scale from `2 tan(R/2)` | Overflow-free by construction; worst error below 1 mm for cells up to about 2,800 km radius. |
 | D4 | Fixed pole frame (east = +Y) | Deterministic; avoids the original's division by zero. |
 | D5 | Dot product for nearest-centre decisions | Monotone in arc length; cheap; exact predicate still needed (O3). |
-| D6 | `geo` Delaunay backend by default, exact hull as reference | Over 500× faster at 20,000 sites; identical results in tests except near-cospherical ties (O5). |
+| D6 | `geo` Delaunay backend by default, exact hull as reference | Over 300× faster at 20,000 sites; exact edge flips give the same triangulation except at exact ties. |
 | D7 | Morton-ordered insertion | `geo`'s sequential insertion depends on input locality. |
 | D8 | Two-means split replacing the centre | Simple; revisit with R4. |
 | D9 | `MAX_CELL_RADIUS = π/2` | Keeps the farthest point of each cell at a vertex (2.0 did not) and bounds the stereographic scale; R3 needs a lower value. |
 | D10 | Sphere only in v0.1 | Matches the public 1992 code; ellipsoid is R5. |
 | D11 | Blue Oak Model License 1.0.0 | Permissive; the 1992 data files are excluded and documented. |
 | D12 | `MIN_SEPARATION = 1e-7` rad, checked by both backends | Above the rounding limits of the hull and of dot products; the same error from both backends. |
+| D13 | Exact edge flips after spade | An exactly Delaunay result for about 15% more time at 10⁶ sites. |
