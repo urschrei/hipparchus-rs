@@ -112,7 +112,7 @@
 //! [design notes]: https://github.com/urschrei/hipparchus-rs/blob/main/DESIGN.md
 //! [examples]: https://github.com/urschrei/hipparchus-rs/tree/main/examples
 
-#![warn(missing_docs)]
+#![warn(missing_docs, clippy::doc_markdown, clippy::missing_errors_doc)]
 
 pub mod algebra;
 pub mod build;
