@@ -1,4 +1,45 @@
-//! Hipparchus-style Voronoi cell structure (Lukatela 1987).
+//! Voronoi cells on the sphere, and points stored in cell-local form.
+//!
+//! A [`CellStructure`] holds the Voronoi cells of a set of centres, as
+//! described by Lukatela (1987). For each cell it stores:
+//!
+//! - the neighbours, in a ring counter-clockwise seen from outside;
+//! - the Voronoi vertices, in the same order;
+//! - the radius: the largest arc from the centre to a point of the cell;
+//! - a stereographic [`Frame`] and scale, for encoding.
+//!
+//! You cannot change a structure after you build it. A [`CellId`] identifies
+//! a cell by the index of its centre in the input.
+//!
+//! # Finding cells
+//!
+//! [`CellStructure::home_cell`] finds the cell that holds a point. It starts
+//! at a cell that you give, and goes to the neighbour whose centre is nearest
+//! to the point until no neighbour is nearer. The number of steps depends on
+//! the start. For points in sequence, such as the vertices of a coastline,
+//! start from the cell of the previous point: on the Natural Earth coastlines
+//! this takes 0.05 steps per point, against 8.8 from a fixed start. A point at
+//! equal distance from two centres can get either cell.
+//!
+//! [`CellStructure::cells_in_cap`] returns every cell that touches a circle on
+//! the sphere. It can also return cells near the circle that do not touch it.
+//!
+//! # Cell-local form
+//!
+//! [`CellStructure::encode`] stores a point as a [`Local`]: its cell, and its
+//! east and north offsets in the stereographic plane of that cell, rounded to
+//! integers. The scale of each cell fits its radius, so the offsets cannot
+//! overflow, and the error increases with the cell radius. The error is below
+//! 1 mm in cells up to about 2,800 km in radius, and at most 4.5 mm in cells
+//! of radius [`MAX_CELL_RADIUS`]. [`CellStructure::resolution`] gives the size
+//! of one unit in a cell.
+//!
+//! The scale of a cell depends on the centres of its neighbours, and a cell
+//! identifier depends on the order of the centres. A [`Local`] therefore
+//! decodes correctly only against the structure that encoded it. Section 5 of
+//! the [design notes] gives the invariants and proofs.
+//!
+//! [design notes]: https://github.com/urschrei/hipparchus-rs/blob/main/DESIGN.md#5-cell-structure
 
 use crate::algebra::{Frame, V3, arc, plane_extent};
 use crate::hull::{HullError, sphere_delaunay_geo};

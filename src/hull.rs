@@ -1,9 +1,23 @@
-//! Spherical Delaunay triangulation.
+//! Delaunay triangulation of points on the sphere.
 //!
-//! - [`sphere_delaunay_geo`]: stereographic projection + `geo`'s (spade)
-//!   planar Delaunay. Near-linear; used by `CellStructure`.
-//! - [`sphere_delaunay`]: incremental 3D convex hull with exact
-//!   `orient3d`. O(n²); kept as the reference implementation.
+//! The Delaunay triangulation of unit vectors is their convex hull. Both
+//! functions in this module return it as triangles of indices into the input,
+//! counter-clockwise seen from outside the sphere:
+//!
+//! - [`sphere_delaunay_geo`] projects the sites stereographically,
+//!   triangulates them in the plane with `geo`, and corrects the result with
+//!   exact 3D edge flips. Its time is close to linear in the number of sites.
+//!   [`CellStructure`](crate::CellStructure) uses it.
+//! - [`sphere_delaunay`] builds the convex hull one site at a time with exact
+//!   `orient3d` tests. Its time is O(n²), so use it as a reference for small
+//!   inputs.
+//!
+//! Both functions give the same triangles, except where four or more sites lie
+//! exactly on one circle. Sites must be at least [`MIN_SEPARATION`] apart, and
+//! both functions identify the same site when they are not. Section 5.2 of the
+//! [design notes] gives the details.
+//!
+//! [design notes]: https://github.com/urschrei/hipparchus-rs/blob/main/DESIGN.md#52-delaunay-triangulation
 
 use crate::algebra::{Frame, V3};
 use geo::{MultiPoint, Point, TriangulateDelaunayUnconstrained};

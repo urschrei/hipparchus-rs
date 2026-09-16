@@ -1,5 +1,26 @@
-//! Direction-cosine vector algebra and the cell-local stereographic frame
-//! (a port of `ALGEBRA.C` from Lukatela & Russell, DDJ 1992).
+//! Vector algebra on direction cosines, and the stereographic frame that
+//! cell-local coordinates use.
+//!
+//! A position is a unit [`V3`]. [`V3::from_lat_lon`] and [`V3::normalized`]
+//! return unit vectors; [`V3::new`] and the arithmetic operators do not
+//! normalise.
+//!
+//! [`arc`] gives the great-circle angle between two positions, with good
+//! conditioning at all separations. [`arc_ddj`] reproduces the approximation
+//! in the 1992 code. It is never longer than the arc, and is much shorter for
+//! distant points (2.33 against π at the antipode), so use it only to exclude
+//! candidates.
+//!
+//! A [`Frame`] projects the sphere stereographically, from the antipode of a
+//! centre onto the plane tangent at that centre. A point at arc `r` from the
+//! centre maps to plane distance [`plane_extent`]`(r)`, which is at least `r`,
+//! so a plane distance is never less than the ground distance it represents.
+//!
+//! The module is a port of `ALGEBRA.C` from Lukatela and Russell (1992).
+//! Unlike the original, [`Frame`] works at the poles. Section 4 of the
+//! [design notes] gives the derivations.
+//!
+//! [design notes]: https://github.com/urschrei/hipparchus-rs/blob/main/DESIGN.md#4-core-representation
 
 use std::ops::{Add, Mul, Neg, Sub};
 

@@ -1,5 +1,22 @@
-//! Data-density-driven cell structures: split any cell holding more than
-//! `capacity` points until none does (cf. Geodyssey's population grids).
+//! Cell structures whose cell sizes follow the density of a set of points.
+//!
+//! [`fibonacci`] gives centres spread almost evenly over the sphere, and so
+//! cells of almost equal size.
+//!
+//! [`adaptive`] starts from Fibonacci centres. It splits each cell that holds
+//! more than a given number of points into two, then builds the structure
+//! again, until no cell holds too many points. Dense areas get small cells.
+//! The seed centres keep the cells in empty areas below
+//! [`MAX_CELL_RADIUS`](crate::cells::MAX_CELL_RADIUS).
+//!
+//! The builder cannot split a cell whose points are identical or less than
+//! about 10 cm apart, so such a cell can hold more points than the limit.
+//! [`Report::load`] gives the number of points in each cell.
+//!
+//! Each round builds the whole structure again, so the builder suits data that
+//! changes in batches. Section 6 of the [design notes] describes the split.
+//!
+//! [design notes]: https://github.com/urschrei/hipparchus-rs/blob/main/DESIGN.md#6-adaptive-builder
 
 use crate::algebra::V3;
 use crate::cells::{BuildError, CellId, CellStructure};
