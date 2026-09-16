@@ -197,10 +197,12 @@ Errors:
 - `TooFewSites` for fewer than four sites or all projected sites collinear.
 
 Exactness: spade's predicates are exact on the projected floating-point
-coordinates, not on the original vectors. Near-cospherical ties could
-therefore resolve differently from an exact 3D test. No test has shown this,
-including the icosahedron case, and the tie outcome is valid either way to
-within rounding.
+coordinates, not on the original vectors, so near-cospherical ties can
+resolve differently from an exact 3D test. The sites +X, +Z, −Z, +Y and
+`(−1/3, 2/3, 2/3)` show this: the last site lies within rounding of the
+circle through +X, +Z and +Y, and the two backends choose different
+diagonals. The result is valid to within rounding (every `orient3d` is
+above −1e-14). See O6.
 
 **`sphere_delaunay` (reference).** Incremental 3D hull:
 
@@ -306,7 +308,8 @@ vertices, finding all 662 true hits.
    a spherical 2-means split (initialised from the point farthest from the
    mean and the point farthest from that; 8 iterations).
 4. Repeat until no cell needs splitting or no overloaded cell can be split
-   (all its points identical).
+   (its points are identical, or too close for dot products to separate;
+   see O8).
 
 Limitations:
 
@@ -369,16 +372,36 @@ fetch instructions in that directory's README) and writes:
 
 ## 8. Verification
 
+Tests marked (P) are property tests using Hegel. Their unit vectors come
+from arbitrary coordinates in [−1, 1], so the inputs include poles, axis
+points and cocircular sets. Tests that build a cell structure use a
+Fibonacci lattice plus drawn sites, and drop any site within 2e-7 rad of
+another (the `TooClose` precondition). Set `HEGEL_TEST_CASES` to run more
+cases than the default 100.
+
 | Test | Establishes |
 |---|---|
 | `stereo_matches_original_c` | `Frame::map`, `Frame::unmap` and `arc_ddj` agree with the C to 1e-12 (1e-14 for `arc_ddj`). |
 | `coast_decode_matches_original_c` | The index reader reproduces the C offsets, and the decoder reproduces the first vertex of each of the 992 dense segments to 1e-12. |
 | `poles_round_trip` | The pole frame round-trips at both poles. |
-| `arc_agrees_with_geo_haversine` | `arc` matches `geo` to 1 µm on 1,000 random pairs. |
-| `delaunay_is_valid` | Both backends satisfy Euler's formula and an exact empty-circumcircle check (`orient3d ≥ 0` for every site and face) for n = 4 to 3,000, produce identical edge sets, and handle a 1 km cluster containing the projection pole. |
+| `lat_lon_round_trips` (P) | `lat_lon` and `from_lat_lon` round-trip to 1e-14. |
+| `arc_agrees_with_geo_haversine` (P) | `arc` matches `geo` to 1 µm. Near the antipode the tolerance grows with Haversine's conditioning. |
+| `arc_ddj_does_not_exceed_arc` (P) | `arc_ddj` does not overestimate, so it is safe for culling. |
+| `frame_round_trips` (P) | `unmap(map(p))` returns `p` to 1e-14 for arcs up to `MAX_CELL_RADIUS`. |
+| `frame_maps_arc_to_plane_extent` (P) | `map` puts a point at plane distance `plane_extent(arc)`, as the overflow argument of 5.7 requires. |
+| `clustered_sites_triangulate` | Both backends triangulate a 1 km cluster that contains the projection pole. |
+| `delaunay_backends_are_valid` (P) | Each result is a closed surface with 2n − 4 faces and passes the empty-circumcircle check: exactly for `sphere_delaunay`, to 1e-14 for `sphere_delaunay_geo`. |
+| `delaunay_backends_agree_without_near_ties` (P) | The backends give the same edges when no edge is within rounding of a tie. |
+| `backends_report_the_first_duplicate` (P) | Both backends report the same `Duplicate` index. |
 | `cospherical_and_duplicate_sites` | Icosahedron (five coplanar neighbours per vertex): valid triangulations and five-neighbour rings; duplicates reported by index. |
-| `walk_finds_nearest_centre` | The walk equals brute-force nearest centre from random starts; I3 holds. |
-| `encode_decode_and_cap_queries` | Round-trip error within two resolution units; cap queries contain the home cell of every sampled point inside the cap. |
+| `neighbour_rings_are_symmetric` (P) | I2. |
+| `voronoi_vertices_are_nearest_to_their_sites` (P) | Vertex `k` is equidistant from the centre and neighbours `k` and `k + 1`, and no centre is nearer. |
+| `walk_finds_nearest_centre` (P) | The walk reaches a nearest centre from any start. |
+| `cell_radius_bounds_its_points` (P) | I3. |
+| `encoding_error_is_bounded` (P) | The round-trip error is at most `√2/2` resolution units (5.7). |
+| `encoding_does_not_saturate` (P) | Local values stay below `i32::MAX` in magnitude. |
+| `cap_query_contains_every_home_cell` (P) | A cap query contains the home cell of every point in the cap. |
+| `adaptive_cells_respect_capacity` (P) | Loads sum to the point count, and only a cell with one point exceeds the capacity. |
 | README doctest | The README usage example compiles and round-trips below 1 mm. |
 
 CI (`.github/workflows/ci.yml`) checks formatting, lints, tests and the
@@ -414,6 +437,17 @@ Release build on a shared Linux sandbox; indicative only.
   plus one flat array) would suit memory mapping (R6).
 - O5. `HullError` and `BuildError` do not implement `std::error::Error` or
   `Display`.
+- O6. `sphere_delaunay_geo` is Delaunay only to within rounding (5.2). A pass
+  of exact `orient3d` edge flips after spade would make it exact.
+- O7. `sphere_delaunay_geo` reports `TooClose` only when two sites project to
+  identical coordinates. Distinct sites 1e-16 rad apart build a
+  `CellStructure` whose Voronoi vertices are wrong. A minimum-length check on
+  Delaunay edges would enforce the documented separation, because each
+  site's nearest neighbour is a Delaunay neighbour.
+- O8. Dot products do not separate points closer than about 1.5e-8 rad
+  (10 cm), because `cos` is flat near zero. The walk and the adaptive split
+  share this limit: `adaptive` keeps two points 1.5e-8 rad apart in one
+  cell. The exact predicate of O3 would remove it.
 
 ## 11. Roadmap
 
@@ -593,7 +627,7 @@ this crate.
 | D3 | `i32` locals with `L = 2 × 10⁹`, scale from `2 tan(R/2)` | Overflow-free by construction; worst error below 1 mm for cells up to about 2,800 km radius. |
 | D4 | Fixed pole frame (east = +Y) | Deterministic; avoids the original's division by zero. |
 | D5 | Dot product for nearest-centre decisions | Monotone in arc length; cheap; exact predicate still needed (O3). |
-| D6 | `geo` Delaunay backend by default, exact hull as reference | Over 500× faster at 20,000 sites; identical results in tests. |
+| D6 | `geo` Delaunay backend by default, exact hull as reference | Over 500× faster at 20,000 sites; identical results in tests except near-cospherical ties (O6). |
 | D7 | Morton-ordered insertion | `geo`'s sequential insertion depends on input locality. |
 | D8 | Two-means split replacing the centre | Simple; revisit with R4. |
 | D9 | `MAX_CELL_RADIUS = 2.0` | Guards the stereographic scale; lower it for R3. |
