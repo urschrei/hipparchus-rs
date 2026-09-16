@@ -2,6 +2,7 @@
 name = "hipparchus-rs"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
 description = "A Rust reimplementation of Lukatela's Hipparchus geopositioning model: direction cosines and data-adaptive spherical Voronoi cells"
 license = "BlueOak-1.0.0"
 readme = "README.md"

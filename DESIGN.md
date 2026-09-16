@@ -378,7 +378,8 @@ fetch instructions in that directory's README) and writes:
 | `encode_decode_and_cap_queries` | Round-trip error within two resolution units; cap queries contain the home cell of every sampled point inside the cap. |
 | README doctest | The README usage example compiles and round-trips below 1 mm. |
 
-CI (`.github/workflows/ci.yml`) checks formatting, lints and tests.
+CI (`.github/workflows/ci.yml`) checks formatting, lints, tests and the
+minimum supported Rust version (1.88, set by `geo`).
 
 ## 9. Performance
 

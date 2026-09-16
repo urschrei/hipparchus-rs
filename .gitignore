@@ -1,1 +1,3 @@
 /target
+# The global gitignore excludes *.csv; the tests embed these fixtures.
+!tests/data/*.csv
