@@ -7,13 +7,13 @@
 
 use crate::algebra::V3;
 use robust::{Coord3D, orient3d};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, PartialEq)]
 pub enum HullError {
     /// Fewer than four distinct, non-coplanar sites.
     TooFewSites,
-    /// Site `i` is an exact duplicate of an earlier site.
+    /// Site `i` is the first site equal to an earlier site.
     Duplicate(usize),
     /// Site `i` fell inside the hull through rounding: it is within about
     /// a metre of another site. Sites must be separated more than that.
@@ -115,6 +115,9 @@ pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
     if pts.len() < 4 {
         return Err(HullError::TooFewSites);
     }
+    if let Some(i) = first_duplicate(pts) {
+        return Err(HullError::Duplicate(i));
+    }
     // Insert in Morton order: spade walks from the previous insertion, so
     // spatially coherent input keeps each walk short.
     let mut order: Vec<u32> = (1..pts.len() as u32).collect();
@@ -125,35 +128,25 @@ pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
     let frame = Frame::new(-pts[0]);
     let mut plane = Vec::with_capacity(order.len());
     for &i in &order {
-        let p = pts[i as usize];
-        if p == pts[0] {
-            return Err(HullError::Duplicate(i as usize));
-        }
-        let [x, y] = frame.map(p);
+        let [x, y] = frame.map(pts[i as usize]);
         plane.push(Point::new(x, y));
     }
     let dt = MultiPoint::new(plane.clone())
         .unconstrained_triangulation_raw()
         .map_err(|_| HullError::Projection)?;
     if dt.num_vertices() != order.len() {
-        // spade merged a coincident point: report the later of the pair
-        let mut seen = std::collections::HashMap::new();
-        let mut first: Option<(u32, u32)> = None; // (later, earlier)
+        // spade merged distinct sites with equal projected coordinates:
+        // report the lowest index that coincides with an earlier site
+        let mut seen = HashMap::new();
+        let mut first = u32::MAX;
         for (&i, q) in order.iter().zip(&plane) {
-            let key = (q.x().to_bits(), q.y().to_bits());
-            if let Some(&j) = seen.get(&key) {
-                let pair = (i.max(j), i.min(j));
-                first = Some(first.map_or(pair, |f| f.min(pair)));
+            if let Some(&j) = seen.get(&bits([q.x(), q.y()])) {
+                first = first.min(i.max(j));
             } else {
-                seen.insert(key, i);
+                seen.insert(bits([q.x(), q.y()]), i);
             }
         }
-        let (b, a) = first.expect("spade merged a vertex");
-        return Err(if pts[a as usize] == pts[b as usize] {
-            HullError::Duplicate(b as usize)
-        } else {
-            HullError::TooClose(b as usize)
-        });
+        return Err(HullError::TooClose(first as usize));
     }
     if dt.all_vertices_on_line() {
         return Err(HullError::TooFewSites);
@@ -171,6 +164,17 @@ pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
             .map(|e| [id(e.from().fix()), id(e.to().fix()), 0]),
     );
     Ok(tris)
+}
+
+/// Bit patterns of `coords`, with `-0.0` as `0.0` so that equal keys mean `==`.
+fn bits<const N: usize>(coords: [f64; N]) -> [u64; N] {
+    coords.map(|c| (c + 0.0).to_bits())
+}
+
+/// Index of the first site equal to an earlier site.
+fn first_duplicate(pts: &[V3]) -> Option<usize> {
+    let mut seen = HashSet::with_capacity(pts.len());
+    pts.iter().position(|p| !seen.insert(bits([p.x, p.y, p.z])))
 }
 
 /// Interleaved 21-bit quantisations of a unit vector's components.

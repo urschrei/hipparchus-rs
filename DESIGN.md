@@ -185,9 +185,10 @@ Two backends produce it.
 
 Errors:
 
-- `Duplicate(i)` for an exact repeat; `TooClose(i)` when two distinct sites
-  project to identical coordinates. The later index of the first merged
-  pair is reported.
+- `Duplicate(i)`: site `i` is the first site equal to an earlier site. Both
+  backends report the same index.
+- `TooClose(i)`: two distinct sites project to identical coordinates; `i`
+  is the lowest index that coincides with an earlier site.
 - `Projection` when spade rejects a coordinate (non-zero magnitude below
   2⁻¹⁴² or above 2²⁰¹). Sites near `s₀` project to about `4/θ`, so the upper
   limit is not a practical concern.
