@@ -6,9 +6,10 @@ use std::collections::VecDeque;
 
 /// Largest local coordinate magnitude used (headroom below `i32::MAX`).
 const LOCAL_MAX: f64 = 2.0e9;
-/// Refuse cells wider than this (radians): the stereographic scale explodes
-/// towards the antipode. Add more centres to cover sparse regions.
-pub const MAX_CELL_RADIUS: f64 = 2.0;
+/// Refuse cells wider than this (radians). Within it, every Voronoi edge lies
+/// in the hemisphere about the centre, so the farthest point of a cell is a
+/// vertex. Add more centres to cover sparse regions.
+pub const MAX_CELL_RADIUS: f64 = std::f64::consts::FRAC_PI_2;
 
 #[derive(Debug, PartialEq)]
 pub enum BuildError {

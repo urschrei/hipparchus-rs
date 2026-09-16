@@ -141,8 +141,9 @@ both poles.
 - `neighbours[i]`: Delaunay neighbours in counter-clockwise order.
 - `vertices[i]`: Voronoi vertices in the same order; vertex `k` lies between
   neighbours `k` and `k + 1`.
-- `radius[i]`: maximum arc from the centre to any point of the cell, which
-  for a spherically convex cell is attained at a vertex.
+- `radius[i]`: maximum arc from the centre to any point of the cell. It is
+  the largest vertex arc because no vertex is more than π/2 from the centre
+  (5.4).
 - `frames[i]`, `scale[i]`: encoding parameters (5.7).
 
 Invariants:
@@ -151,7 +152,7 @@ Invariants:
 - I2. Each neighbour ring is closed and consistent: `j ∈ N(i) ⇔ i ∈ N(j)`.
 - I3. Every point `p` with home cell `i` satisfies `arc(p, c_i) ≤ radius[i]`
   up to rounding (tested with a 1e-12 relative margin).
-- I4. `radius[i] ≤ MAX_CELL_RADIUS` (2.0 rad).
+- I4. `radius[i] ≤ MAX_CELL_RADIUS` (π/2).
 - I5. The structure is immutable; any change means a rebuild (see R4).
 
 ### 5.2 Delaunay triangulation
@@ -235,10 +236,23 @@ the degree, which is small.
 ### 5.4 Cell radius
 
 `radius[i]` is the largest arc from the centre to its Voronoi vertices.
-`MAX_CELL_RADIUS = 2.0` rejects cells so large that the stereographic scale
-becomes unusable (`plane_extent` grows without bound towards π). Global
-seeds prevent this in practice. If gnomonic per-cell geometry is adopted
-(R3), the limit must drop below π/2.
+`CellStructure::new` rejects a cell whose radius exceeds
+`MAX_CELL_RADIUS = π/2`.
+
+- Along a great circle, the arc from `c` has one maximum. On the bisector
+  of `c` and neighbour `u`, that maximum is at `−normalize(c + u)`, at
+  `π − arc(c, u)/2`, which exceeds π/2.
+- If every vertex is within π/2 of `c`, an edge (a minor arc between two
+  vertices) cannot contain that point, so the farthest point of the cell is
+  a vertex.
+- A wider cell can have its farthest point inside an edge. With the earlier
+  limit of 2.0, `wide_cell_is_rejected` gave a cell with vertex radius 1.85
+  rad whose home point, the south pole, was 1.94 rad away: encoding
+  saturated and a cap query missed the cell.
+
+The limit also bounds the stereographic scale: `plane_extent(π/2) = 2`.
+Global seeds keep cells well inside it. Gnomonic per-cell geometry (R3)
+needs a limit strictly below π/2.
 
 ### 5.5 Home-cell walk
 
@@ -394,6 +408,7 @@ cases than the default 100.
 | `delaunay_backends_agree_without_near_ties` (P) | The backends give the same edges when no edge is within rounding of a tie. |
 | `backends_report_the_first_duplicate` (P) | Both backends report the same `Duplicate` index. |
 | `cospherical_and_duplicate_sites` | Icosahedron (five coplanar neighbours per vertex): valid triangulations and five-neighbour rings; duplicates reported by index. |
+| `wide_cell_is_rejected` | A cell whose farthest point lies inside an edge is rejected (5.4). |
 | `neighbour_rings_are_symmetric` (P) | I2. |
 | `voronoi_vertices_are_nearest_to_their_sites` (P) | Vertex `k` is equidistant from the centre and neighbours `k` and `k + 1`, and no centre is nearer. |
 | `walk_finds_nearest_centre` (P) | The walk reaches a nearest centre from any start. |
@@ -630,6 +645,6 @@ this crate.
 | D6 | `geo` Delaunay backend by default, exact hull as reference | Over 500× faster at 20,000 sites; identical results in tests except near-cospherical ties (O6). |
 | D7 | Morton-ordered insertion | `geo`'s sequential insertion depends on input locality. |
 | D8 | Two-means split replacing the centre | Simple; revisit with R4. |
-| D9 | `MAX_CELL_RADIUS = 2.0` | Guards the stereographic scale; lower it for R3. |
+| D9 | `MAX_CELL_RADIUS = π/2` | Keeps the farthest point of each cell at a vertex (2.0 did not) and bounds the stereographic scale; R3 needs a lower value. |
 | D10 | Sphere only in v0.1 | Matches the public 1992 code; ellipsoid is R5. |
 | D11 | Blue Oak Model License 1.0.0 | Permissive; the 1992 data files are excluded and documented. |

@@ -1,7 +1,7 @@
 use geo::{Distance, Haversine, Point};
 use hegel::TestCase;
 use hegel::generators as gs;
-use hipparchus_rs::cells::MAX_CELL_RADIUS;
+use hipparchus_rs::cells::{BuildError, MAX_CELL_RADIUS};
 use hipparchus_rs::{CellStructure, EARTH_RADIUS, Frame, V3, algebra, build, ddj, hull};
 use std::collections::{BTreeSet, HashMap};
 
@@ -311,6 +311,26 @@ fn cospherical_and_duplicate_sites() {
         dup.push(dup[3]);
         assert_eq!(f(&dup), Err(hull::HullError::Duplicate(12)), "{name}");
     }
+}
+
+#[test]
+fn wide_cell_is_rejected() {
+    // Cell 0 has vertex radius 1.85 rad, but the south pole is in the cell at
+    // 1.94 rad, inside an edge.
+    let sph = |colat: f64, lon: f64| {
+        V3::new(
+            colat.sin() * lon.cos(),
+            colat.sin() * lon.sin(),
+            colat.cos(),
+        )
+    };
+    let mut sites = vec![sph(1.2, 0.0), sph(1.2, std::f64::consts::PI)];
+    sites.extend((0..5).map(|i| sph(0.6, std::f64::consts::TAU * f64::from(i) / 5.0 + 0.3)));
+    sites.push(V3::new(0.0, 0.0, 1.0));
+    let Err(BuildError::CellTooLarge { radius, .. }) = CellStructure::new(sites) else {
+        panic!("a cell wider than MAX_CELL_RADIUS was accepted");
+    };
+    assert!(radius > MAX_CELL_RADIUS);
 }
 
 #[hegel::test]
