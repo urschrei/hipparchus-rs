@@ -189,9 +189,11 @@ Errors:
   backends report the same index.
 - `TooClose(i)`: two distinct sites project to identical coordinates; `i`
   is the lowest index that coincides with an earlier site.
-- `Projection` when spade rejects a coordinate (non-zero magnitude below
-  2⁻¹⁴² or above 2²⁰¹). Sites near `s₀` project to about `4/θ`, so the upper
-  limit is not a practical concern.
+- `Projection` when spade rejects a coordinate (magnitude above 2²⁰¹, or
+  not finite). Sites near `s₀` project to about `4/θ`, so the limit is not a
+  practical concern. spade also rejects non-zero magnitudes below 2⁻¹⁴²;
+  such coordinates become zero, a change below the rounding error of
+  `map`.
 - `TooFewSites` for fewer than four sites or all projected sites collinear.
 
 Exactness: spade's predicates are exact on the projected floating-point

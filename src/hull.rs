@@ -18,8 +18,8 @@ pub enum HullError {
     /// Site `i` fell inside the hull through rounding: it is within about
     /// a metre of another site. Sites must be separated more than that.
     TooClose(usize),
-    /// The planar triangulator rejected a projected coordinate (spade accepts
-    /// magnitudes between 2^-142 and 2^201, or exactly zero).
+    /// The planar triangulator rejected a projected coordinate: spade accepts
+    /// finite magnitudes up to 2^201.
     Projection,
 }
 
@@ -128,7 +128,7 @@ pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
     let frame = Frame::new(-pts[0]);
     let mut plane = Vec::with_capacity(order.len());
     for &i in &order {
-        let [x, y] = frame.map(pts[i as usize]);
+        let [x, y] = frame.map(pts[i as usize]).map(snap_to_zero);
         plane.push(Point::new(x, y));
     }
     let dt = MultiPoint::new(plane.clone())
@@ -164,6 +164,16 @@ pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
             .map(|e| [id(e.from().fix()), id(e.to().fix()), 0]),
     );
     Ok(tris)
+}
+
+/// spade rejects non-zero magnitudes below `MIN_ALLOWED_VALUE` (2^-142). Such
+/// a value is smaller than the rounding error of `Frame::map`, so use zero.
+fn snap_to_zero(c: f64) -> f64 {
+    if c.abs() < spade::MIN_ALLOWED_VALUE {
+        0.0
+    } else {
+        c
+    }
 }
 
 /// Bit patterns of `coords`, with `-0.0` as `0.0` so that equal keys mean `==`.
