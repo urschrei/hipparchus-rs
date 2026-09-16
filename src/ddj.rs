@@ -2,15 +2,21 @@
 
 use crate::algebra::{Frame, V3};
 
+/// Local units per object radius: `value = plane × LC_SCALE / radius`.
 pub const LC_SCALE: f64 = 32000.0;
 
 /// 40-byte little-endian index record (16-bit MS C 6.0 layout).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IndexRec {
+    /// Object centre.
     pub centre: V3,
+    /// Object radius in radians.
     pub radius: f64,
+    /// Byte offset of the first vertex in `COAST.DAT`.
     pub offset: u32,
+    /// Number of vertices.
     pub count: u16,
+    /// Segment identifier.
     pub id: i16,
 }
 
@@ -18,6 +24,8 @@ fn f64_at(b: &[u8], i: usize) -> f64 {
     f64::from_le_bytes(b[i..i + 8].try_into().unwrap())
 }
 
+/// Reads the records of a `COAST*.IDX` file. Bytes after the last complete
+/// record are ignored.
 pub fn read_index(bytes: &[u8]) -> Vec<IndexRec> {
     bytes
         .as_chunks::<40>()
@@ -34,6 +42,10 @@ pub fn read_index(bytes: &[u8]) -> Vec<IndexRec> {
 }
 
 /// Decode one segment's `(i16, i16)` local vertices, as `VIEW.C` does.
+///
+/// # Panics
+///
+/// If `dat` does not hold `rec.count` vertices from `rec.offset`.
 pub fn decode_segment(rec: &IndexRec, dat: &[u8]) -> Vec<V3> {
     let frame = Frame::new(rec.centre);
     let s = rec.radius / LC_SCALE;

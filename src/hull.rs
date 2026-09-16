@@ -13,14 +13,16 @@ use spade::handles::FixedVertexHandle;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+/// Error from [`sphere_delaunay`] and [`sphere_delaunay_geo`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HullError {
     /// Fewer than four distinct, non-coplanar sites.
     TooFewSites,
     /// Site `i` is the first site equal to an earlier site.
     Duplicate(usize),
-    /// Site `i` fell inside the hull through rounding: it is within about
-    /// a metre of another site. Sites must be separated more than that.
+    /// Site `i` is within rounding of an earlier site: it fell inside the hull
+    /// ([`sphere_delaunay`]) or has the same projected coordinates
+    /// ([`sphere_delaunay_geo`]). Sites must be about a metre or more apart.
     TooClose(usize),
     /// The planar triangulator rejected a projected coordinate: spade accepts
     /// finite magnitudes up to 2^201.
@@ -61,6 +63,11 @@ fn sees(pts: &[V3], [a, b, c]: [u32; 3], p: V3) -> bool {
 
 /// Triangles (CCW seen from outside) of the Delaunay triangulation of `pts`.
 /// Cospherical ties are broken arbitrarily but consistently.
+///
+/// # Errors
+///
+/// [`HullError::TooFewSites`], [`HullError::Duplicate`] or
+/// [`HullError::TooClose`] as described there.
 pub fn sphere_delaunay(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
     let n = pts.len();
     // Three distinct sphere points are never collinear, so we only need a
@@ -126,6 +133,10 @@ pub fn sphere_delaunay(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
 /// Predicates are exact on the *projected* coordinates, so cospherical ties
 /// may break differently from [`sphere_delaunay`], and distinct sites with
 /// equal projected coordinates are reported as [`HullError::TooClose`].
+///
+/// # Errors
+///
+/// Any [`HullError`], as described there.
 pub fn sphere_delaunay_geo(pts: &[V3]) -> Result<Vec<[u32; 3]>, HullError> {
     if pts.len() < 4 {
         return Err(HullError::TooFewSites);

@@ -3,21 +3,28 @@
 
 use std::ops::{Add, Mul, Neg, Sub};
 
-/// A unit surface normal, i.e. a point on the (spherical) Earth.
+/// A 3-vector. A unit `V3` is a point on the sphere, given by its direction
+/// cosines.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct V3 {
+    /// Component towards latitude 0°, longitude 0°.
     pub x: f64,
+    /// Component towards latitude 0°, longitude 90° E.
     pub y: f64,
+    /// Component towards the north pole.
     pub z: f64,
 }
 
 impl V3 {
+    /// The vector with these components, not normalised.
     pub const fn new(x: f64, y: f64, z: f64) -> Self {
         Self { x, y, z }
     }
+    /// Scalar product.
     pub fn dot(self, o: Self) -> f64 {
         self.x * o.x + self.y * o.y + self.z * o.z
     }
+    /// Vector product.
     pub fn cross(self, o: Self) -> Self {
         Self::new(
             self.y * o.z - self.z * o.y,
@@ -25,9 +32,11 @@ impl V3 {
             self.x * o.y - self.y * o.x,
         )
     }
+    /// Euclidean length.
     pub fn norm(self) -> f64 {
         self.dot(self).sqrt()
     }
+    /// This vector scaled to unit length. The zero vector gives NaN.
     pub fn normalized(self) -> Self {
         self * (1.0 / self.norm())
     }
@@ -115,6 +124,7 @@ pub struct Frame {
 }
 
 impl Frame {
+    /// The frame tangent at `centre`, which must be a unit vector.
     pub fn new(centre: V3) -> Self {
         let cp = centre.x.hypot(centre.y);
         let east = if cp > 1e-300 {

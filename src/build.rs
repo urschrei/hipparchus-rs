@@ -46,11 +46,22 @@ fn split(pts: &[V3]) -> Option<[V3; 2]> {
 }
 
 #[derive(Clone, Debug)]
+/// Statistics from [`adaptive`].
 pub struct Report {
+    /// Number of cell structures built.
     pub rounds: usize,
+    /// Number of points in each cell of the final structure.
     pub load: Vec<usize>,
 }
 
+/// Builds cells from `seeds` Fibonacci-lattice centres, then splits each cell
+/// that holds more than `capacity` of `pts` until no cell needs, or can take,
+/// a split.
+///
+/// # Errors
+///
+/// [`BuildError`] if a structure does not build: for example, if `seeds` is
+/// less than four or a split puts two centres too close together.
 pub fn adaptive(
     pts: &[V3],
     capacity: usize,

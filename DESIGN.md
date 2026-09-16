@@ -419,8 +419,8 @@ cases than the default 100.
 | `adaptive_cells_respect_capacity` (P) | Loads sum to the point count, and only a cell with one point exceeds the capacity. |
 | README doctest | The README usage example compiles and round-trips below 1 mm. |
 
-CI (`.github/workflows/ci.yml`) checks formatting, lints, tests and the
-minimum supported Rust version (1.88, set by `geo`).
+CI (`.github/workflows/ci.yml`) checks formatting, lints, documentation,
+tests and the minimum supported Rust version (1.88, set by `geo`).
 
 ## 9. Performance
 

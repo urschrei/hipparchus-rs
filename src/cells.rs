@@ -12,10 +12,18 @@ const LOCAL_MAX: f64 = 2.0e9;
 /// vertex. Add more centres to cover sparse regions.
 pub const MAX_CELL_RADIUS: f64 = std::f64::consts::FRAC_PI_2;
 
+/// Error from [`CellStructure::new`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum BuildError {
+    /// The centres cannot be triangulated.
     Hull(HullError),
-    CellTooLarge { cell: u32, radius: f64 },
+    /// A cell radius exceeds [`MAX_CELL_RADIUS`].
+    CellTooLarge {
+        /// The cell identifier.
+        cell: u32,
+        /// The cell radius in radians.
+        radius: f64,
+    },
 }
 
 impl fmt::Display for BuildError {
@@ -45,15 +53,24 @@ impl From<HullError> for BuildError {
     }
 }
 
-/// A point in cell-local form: 4 + 4 + 4 bytes on disk (the paper used a
-/// 16-bit cell id; `u32` just raises the cell-count ceiling).
+/// A point in cell-local form: a cell identifier and stereographic offsets
+/// from the cell centre, 12 bytes in total. AC8 used a 16-bit cell
+/// identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Local {
+    /// Home cell identifier.
     pub cell: u32,
+    /// East offset in local units.
     pub e: i32,
+    /// North offset in local units.
     pub n: i32,
 }
 
+/// The Voronoi cells of a set of centres, with the neighbour rings, vertices,
+/// radii and stereographic frames that queries and point encoding use.
+///
+/// Methods that take a cell identifier panic if it is not less than
+/// [`len`](Self::len).
 #[derive(Clone, Debug)]
 pub struct CellStructure {
     centres: Vec<V3>,
@@ -69,12 +86,19 @@ pub struct CellStructure {
 }
 
 impl CellStructure {
+    /// Builds the cells of `centres`, which must be unit vectors about a
+    /// metre or more apart. Cell `i` has centre `centres[i]`.
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::Hull`] if the centres cannot be triangulated, and
+    /// [`BuildError::CellTooLarge`] if a cell is too wide.
     pub fn new(centres: Vec<V3>) -> Result<Self, BuildError> {
         let tris = sphere_delaunay_geo(&centres)?;
         let n = centres.len();
 
-        // For each site, the (next, prev) pair of each incident triangle,
-        // plus that triangle's circumcentre (a Voronoi vertex).
+        // For each site `a`, one `(b, c, circumcentre)` per incident
+        // triangle `(a, b, c)`. The circumcentre is a Voronoi vertex.
         let mut fans: Vec<Vec<(u32, u32, V3)>> = vec![Vec::new(); n];
         for &[a, b, c] in &tris {
             let (pa, pb, pc) = (
@@ -132,32 +156,42 @@ impl CellStructure {
         })
     }
 
+    /// Number of cells.
     pub fn len(&self) -> usize {
         self.centres.len()
     }
+    /// `true` if there are no cells.
     pub fn is_empty(&self) -> bool {
         self.centres.is_empty()
     }
+    /// Centre of cell `c`.
     pub fn centre(&self, c: u32) -> V3 {
         self.centres[c as usize]
     }
+    /// Largest arc from the centre of cell `c` to a point of the cell, in
+    /// radians.
     pub fn radius(&self, c: u32) -> f64 {
         self.radius[c as usize]
     }
+    /// Cells that share an edge with cell `c`, counter-clockwise seen from
+    /// outside.
     pub fn neighbours(&self, c: u32) -> &[u32] {
         &self.neighbours[c as usize]
     }
+    /// Voronoi vertices of cell `c`. Vertex `k` is between neighbours `k` and
+    /// `k + 1`.
     pub fn vertices(&self, c: u32) -> &[V3] {
         &self.vertices[c as usize]
     }
-    /// Ground distance represented by one local unit, in radians.
+    /// Plane distance of one local unit in cell `c`, in radians. The ground
+    /// distance is not more than this.
     pub fn resolution(&self, c: u32) -> f64 {
         1.0 / self.scale[c as usize]
     }
 
-    /// Greedy walk from `start` to the cell owning `p`. Returns the cell
-    /// and the number of moves. Exact on a Delaunay graph; uses the dot
-    /// product as a monotone proxy for distance.
+    /// Greedy walk from cell `start` to the cell whose centre is nearest to
+    /// `p`. Returns the cell and the number of moves. Correct on a Delaunay
+    /// graph; uses the dot product as a monotone proxy for distance.
     pub fn home_cell(&self, p: V3, start: u32) -> (u32, usize) {
         let (mut cur, mut steps) = (start, 0);
         let mut best = p.dot(self.centre(cur));
@@ -177,7 +211,8 @@ impl CellStructure {
     }
 
     /// Cells that may intersect the cap of `radius` (radians) around `centre`:
-    /// a breadth-first search outward from the cap centre's home cell.
+    /// a breadth-first search outward from the cap centre's home cell, which
+    /// the walk finds from cell `hint`.
     pub fn cells_in_cap(&self, centre: V3, radius: f64, hint: u32) -> Vec<u32> {
         let (home, _) = self.home_cell(centre, hint);
         let mut seen = vec![false; self.len()];
@@ -198,6 +233,8 @@ impl CellStructure {
         out
     }
 
+    /// Encodes `p` in its home cell, walking from cell `hint`. For sequential
+    /// points, the cell of the previous point is a good hint.
     pub fn encode(&self, p: V3, hint: u32) -> Local {
         let (cell, _) = self.home_cell(p, hint);
         let [e, n] = self.frames[cell as usize].map(p);
@@ -209,6 +246,7 @@ impl CellStructure {
         }
     }
 
+    /// The point that `l` encodes.
     pub fn decode(&self, l: Local) -> V3 {
         let s = self.resolution(l.cell);
         self.frames[l.cell as usize].unmap([l.e as f64 * s, l.n as f64 * s])
