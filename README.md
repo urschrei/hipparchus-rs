@@ -87,7 +87,6 @@ the ellipsoid. Points are supported; line and region objects are not yet.
 | `hull` | Spherical Delaunay triangulation. `sphere_delaunay_geo` (default) projects stereographically and uses `geo`'s spade-backed Delaunay; `sphere_delaunay` is an exact incremental 3D hull kept as the reference. |
 | `cells` | Voronoi cell structure: circular neighbour lists, cell vertices and radii, home-cell walk, cap queries, 12-byte cell-local point encoding. |
 | `build` | Adaptive structures: split any cell holding more than a given number of points. |
-| `ddj` | Readers for the 1992 `COAST*.IDX` and `COAST.DAT` files. |
 
 ## Usage
 
@@ -123,8 +122,7 @@ assert!(hipparchus_rs::arc(p, back) * hipparchus_rs::EARTH_RADIUS < 1e-3);
 | Delaunay, 10⁶ random sites | 0.58 s (`geo` backend) |
 
 The port agrees with the original C `MapStereo`, `UnMapStereo` and `ArcDist`
-to 1e-12 on 2,000 cases, and reproduces its decoding of the first vertex of
-each of the 992 dense coastline segments to 1e-12.
+to 1e-12 on 2,000 cases.
 
 ## References
 
@@ -164,7 +162,7 @@ Karney, C. F. F. (2013). Algorithms for geodesics. *Journal of Geodesy*,
 The code in this repository is licensed under the
 [Blue Oak Model License 1.0.0](LICENSE.md).
 
-The files in `tests/data` derived from the 1992 article are not covered by
-that licence; see [tests/data/README.md](tests/data/README.md). This project is
+The Natural Earth coastline data in `tests/data` is in the public domain;
+see [tests/data/README.md](tests/data/README.md). This project is
 not affiliated with Geodyssey Limited, Microsoft, or the authors of the papers
 above. Hipparchus® was registered as a trademark by Geodyssey Limited.

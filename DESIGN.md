@@ -367,10 +367,13 @@ Limitations:
 
 ### 7.1 File formats
 
+The companion archive holds these files. This repository does not include
+them.
+
 - `COAST*.IDX`: 40-byte little-endian records from the 16-bit MS C 6.0
   compiler: centre (3 × `f64`), radius in radians (`f64`), offset into
   `COAST.DAT` (`i32`), vertex count (`i16`), segment id (`i16`). A modern
-  `struct` has a different layout, so both `ddj.rs` and `ref.c` read fields
+  `struct` has a different layout, so a reader must read fields
   individually.
 - `COAST.DAT`: `(i16, i16)` pairs, `value = (short)(plane × 32000 / radius)`.
   The sparse set is written first, then the dense set; both index files
@@ -404,14 +407,11 @@ Limitations:
 ### 7.3 Reference data
 
 `tools/ddj-reference/ref.c` calls the original `ALGEBRA.C` (not included;
-fetch instructions in that directory's README) and writes:
-
-- `tests/data/stereo.csv`: 2,000 cases of centre, point, `MapStereo`
-  result, `UnMapStereo` of that result, and `ArcDist`. Centres are within
-  89° of the equator (the original fails at the poles); points are up to
-  166° from the centre (mean 42°).
-- `tests/data/coast0_first.csv`: the first decoded vertex of every dense
-  segment, decoded as `VIEW.C` does.
+fetch instructions in that directory's README) and writes
+`tests/data/stereo.csv`: 2,000 cases of centre, point, `MapStereo` result,
+`UnMapStereo` of that result, and `ArcDist`. Centres are within 89° of the
+equator (the original fails at the poles); points are up to 166° from the
+centre (mean 42°).
 
 ## 8. Verification
 
@@ -425,7 +425,6 @@ cases than the default 100.
 | Test | Establishes |
 |---|---|
 | `stereo_matches_original_c` | `Frame::map`, `Frame::unmap` and `arc_ddj` agree with the C to 1e-12 (1e-14 for `arc_ddj`). |
-| `coast_decode_matches_original_c` | The index reader reproduces the C offsets, and the decoder reproduces the first vertex of each of the 992 dense segments to 1e-12. |
 | `poles_round_trip` | The pole frame round-trips at both poles. |
 | `lat_lon_round_trips` (P) | `lat_lon` and `from_lat_lon` round-trip to 1e-14. |
 | `arc_agrees_with_geo_haversine` (P) | `arc` matches `geo` to 1 µm. Near the antipode the tolerance grows with Haversine's conditioning. |
@@ -669,6 +668,7 @@ this crate.
 | D8 | Two-means split replacing the centre | Simple; revisit with R4. |
 | D9 | `MAX_CELL_RADIUS = π/2` | Keeps the farthest point of each cell at a vertex (2.0 did not) and bounds the stereographic scale; R3 needs a lower value. |
 | D10 | Sphere only in v0.1 | Matches the public 1992 code; ellipsoid is R5. |
-| D11 | Blue Oak Model License 1.0.0 | Permissive; the 1992 data files are excluded and documented. |
+| D11 | Blue Oak Model License 1.0.0 | Permissive; the only third-party data is public domain. |
 | D12 | `MIN_SEPARATION = 1e-7` rad, checked by both backends | Above the rounding limits of the hull and of dot products; the same error from both backends. |
 | D13 | Exact edge flips after spade | An exactly Delaunay result for about 15% more time at 10⁶ sites. |
+| D14 | Natural Earth 1:50m coastlines as example data; no 1992 coastline files or readers | Public domain, so no licence exceptions; 60,416 vertices against 52,766 in the 1992 dense set. |

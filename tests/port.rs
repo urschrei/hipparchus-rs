@@ -3,7 +3,7 @@ use hegel::TestCase;
 use hegel::generators as gs;
 use hipparchus_rs::cells::{BuildError, MAX_CELL_RADIUS};
 use hipparchus_rs::hull::{HullError, MIN_SEPARATION};
-use hipparchus_rs::{CellId, CellStructure, EARTH_RADIUS, Frame, V3, algebra, build, ddj, hull};
+use hipparchus_rs::{CellId, CellStructure, EARTH_RADIUS, Frame, V3, algebra, build, hull};
 use std::collections::{BTreeSet, HashMap};
 
 struct Rng(u64);
@@ -105,18 +105,6 @@ fn stereo_matches_original_c() {
         let back = f.unmap([e_c, n_c]);
         assert!(close(back, V3::new(bx, by, bz), 1e-12));
         assert!((algebra::arc_ddj(p0, pe) - arc_c).abs() < 1e-14);
-    }
-}
-
-#[test]
-fn coast_decode_matches_original_c() {
-    let idx = ddj::read_index(include_bytes!("data/COAST0.IDX"));
-    let dat = include_bytes!("data/COAST.DAT");
-    assert_eq!(idx.len(), 992);
-    for (rec, [offset, x, y, z]) in idx.iter().zip(rows(include_str!("data/coast0_first.csv"))) {
-        assert_eq!(f64::from(rec.offset), offset);
-        let first = ddj::decode_segment(rec, dat)[0];
-        assert!(close(first, V3::new(x, y, z), 1e-12));
     }
 }
 
