@@ -1,14 +1,15 @@
 //! Store points in cell-local form and find the points near a place.
 //!
-//! Builds cells over the 1992 coastline vertices, stores each vertex as a
-//! 12-byte `Local` in its cell, then decodes only the cells that the query
-//! circle can touch.
+//! Builds cells over the Natural Earth 1:50m coastline vertices, stores each
+//! vertex as a 12-byte `Local` in its cell, then decodes only the cells that
+//! the query circle can touch.
 //!
 //! Usage: cargo run --release --example nearby -- [lat lon radius_km]
 //! (default: Dublin, 500 km)
 
-use hipparchus_rs::{CellId, EARTH_RADIUS, Local, V3, arc, build, ddj};
-use std::{fs, path::Path};
+mod coastline;
+
+use hipparchus_rs::{CellId, EARTH_RADIUS, Local, V3, arc, build};
 
 fn main() {
     let args: Vec<f64> = std::env::args()
@@ -21,12 +22,9 @@ fn main() {
         _ => panic!("usage: nearby [lat lon radius_km]"),
     };
 
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
-    let idx = ddj::read_index(&fs::read(dir.join("COAST0.IDX")).unwrap());
-    let dat = fs::read(dir.join("COAST.DAT")).unwrap();
-    let pts: Vec<V3> = idx
-        .iter()
-        .flat_map(|rec| ddj::decode_segment(rec, &dat))
+    let pts: Vec<V3> = coastline::load(&coastline::default_path())
+        .into_iter()
+        .flatten()
         .collect();
 
     // At most 256 vertices per cell; 120 seed cells cover the empty ocean.

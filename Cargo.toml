@@ -16,4 +16,5 @@ robust = "1.2.0"
 spade = "2.10"
 
 [dev-dependencies]
+geojson = "1.0.0"
 hegeltest = "0.45.5"

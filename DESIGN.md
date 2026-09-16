@@ -303,8 +303,8 @@ encoding (both cells decode correctly) but would matter for a unique stored
 representation and for deduplication. See open issue O1.
 
 Hints: the caller supplies `start`. For sequential vertices the previous
-vertex's cell is almost always correct (0.03 steps per point on the
-coastline data, against 7.7 from a fixed start).
+vertex's cell is almost always correct (0.05 steps per point on the
+Natural Earth coastlines, against 8.8 from a fixed start).
 
 ### 5.6 Cap queries
 
@@ -320,8 +320,8 @@ cells.
 - False positives are possible and harmless: a cell can pass without
   meeting the cap.
 
-The Dublin 500 km query returned 9 cells and read 2.9% of the coastline
-vertices, finding all 662 true hits.
+The Dublin 500 km query returned 11 cells and read 3.3% of the coastline
+vertices, finding all 910 true hits.
 
 ### 5.7 Local encoding
 
@@ -334,7 +334,7 @@ vertices, finding all 662 true hits.
 - Plane resolution is `plane_extent(R) / L` radians per unit, and ground
   resolution is no worse (4.3). Rounding contributes at most half a unit per
   axis, so the worst position error is `plane_extent(R) · √2 / (2L)`. For
-  the largest coastline cell (R = 1,690 km) the bound is 0.60 mm; the
+  the largest coastline cell (R = 1,691 km) the bound is 0.60 mm; the
   measured worst case was 0.58 mm.
 - `Local` is 12 bytes (`u32` cell, two `i32`). AC8's layout used a 16-bit
   cell identifier (10 bytes).
@@ -455,15 +455,15 @@ tests and the minimum supported Rust version (1.88, set by `geo`).
 
 ## 9. Performance
 
-Release build on a shared Linux sandbox; indicative only.
+Release build on an Apple M2 Pro; indicative only.
 
 | Task | Result |
 |---|---|
-| Delaunay, 1,000 random sites | exact 17 ms; `geo` 0.6 ms |
-| Delaunay, 20,000 random sites | exact 6.7 s; `geo` 12 ms |
-| Delaunay, 10⁶ random sites | `geo` 0.69 s (77 s without Morton ordering) |
-| Adaptive build, coastline (52,766 points, capacity 256) | 26 ms |
-| Encode and decode 52,766 points | 7 ms |
+| Delaunay, 1,000 random sites | exact 8.5 ms; `geo` 0.9 ms |
+| Delaunay, 20,000 random sites | exact 3.1 s; `geo` 9 ms |
+| Delaunay, 10⁶ random sites | `geo` 0.58 s (85 s without Morton ordering) |
+| Adaptive build, Natural Earth coastlines (60,416 points, capacity 256) | 19 ms |
+| Encode and decode 60,416 points | 3 ms |
 
 `examples/hull_bench.rs` and `examples/coast.rs` reproduce these.
 

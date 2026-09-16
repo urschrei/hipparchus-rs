@@ -1,43 +1,19 @@
-//! Build a density-driven cell structure over the DDJ 1992 world coastlines.
-//! Usage: cargo run --release --example coast -- <dir with COAST0.IDX, COAST.DAT, COAST0.LNS>
+//! Build a density-driven cell structure over the Natural Earth 1:50m
+//! coastlines.
+//! Usage: cargo run --release --example coast -- [coastline.geojson]
 
-use hipparchus_rs::{CellId, CellStructure, EARTH_RADIUS, V3, arc, build, ddj};
-use std::{fmt::Write, fs, path::Path, time::Instant};
+mod coastline;
+
+use hipparchus_rs::{CellId, CellStructure, EARTH_RADIUS, V3, arc, build};
+use std::{fmt::Write, fs, path::PathBuf, time::Instant};
 
 fn main() {
-    let dir = std::env::args()
+    let path = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "tests/data".into());
-    let dir = Path::new(&dir);
-    let idx = ddj::read_index(&fs::read(dir.join("COAST0.IDX")).unwrap());
-    let dat = fs::read(dir.join("COAST.DAT")).unwrap();
-    let segs: Vec<Vec<V3>> = idx.iter().map(|r| ddj::decode_segment(r, &dat)).collect();
+        .map_or_else(coastline::default_path, PathBuf::from);
+    let segs = coastline::load(&path);
     let pts: Vec<V3> = segs.iter().flatten().copied().collect();
     let km = |r: f64| r * EARTH_RADIUS / 1e3;
-
-    // How lossy was the 1992 16-bit scheme? Compare with the ASCII source.
-    if let Ok(lns) = fs::read_to_string(dir.join("COAST0.LNS")) {
-        let src: Vec<V3> = lns
-            .lines()
-            .filter(|l| !l.starts_with('*'))
-            .map(|l| {
-                let mut it = l.split([' ', ',', '\t']).filter(|s| !s.is_empty());
-                let mut f = || it.next().unwrap().parse::<f64>().unwrap();
-                V3::from_lat_lon(f(), f())
-            })
-            .collect();
-        assert_eq!(src.len(), pts.len());
-        let worst = src
-            .iter()
-            .zip(&pts)
-            .map(|(&a, &b)| arc(a, b))
-            .fold(0.0, f64::max);
-        println!(
-            "DDJ i16 encoding: {} vertices, worst error {:.1} m",
-            pts.len(),
-            km(worst) * 1e3
-        );
-    }
 
     let t = Instant::now();
     let (cs, rep) = build::adaptive(&pts, 256, 120).unwrap();

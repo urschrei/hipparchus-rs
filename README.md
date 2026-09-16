@@ -17,7 +17,7 @@ is built from the published papers and the C code accompanying the 1992
 *Dr. Dobb's Journal* article. See [DESIGN.md](DESIGN.md) for the design,
 findings and roadmap.
 
-![Voronoi cells over the 1992 world coastlines](docs/cells.svg)
+![Voronoi cells over the Natural Earth 1:50m coastlines](docs/cells.svg)
 
 ## Status
 
@@ -59,7 +59,7 @@ the ellipsoid. Points are supported; line and region objects are not yet.
   cell.
 - **No incremental updates.** New centres mean a new structure, and all
   stored `Local` values must be encoded again. `adaptive` rebuilds the
-  structure on each round (26 ms in total for the 52,766 coastline
+  structure on each round (19 ms in total for the 60,416 coastline
   vertices), so it suits data that changes in batches, not continuously.
 - **Points only.** There are no line or polygon objects: no clipping,
   point-in-polygon tests or joins against regions. `geo` provides these in
@@ -108,19 +108,19 @@ let back = cells.decode(local);
 assert!(hipparchus_rs::arc(p, back) * hipparchus_rs::EARTH_RADIUS < 1e-3);
 ```
 
-## Results on the 1992 coastline data
+## Results on the Natural Earth coastlines
 
-52,766 vertices; cells split above 256 vertices; 120 seed centres.
+60,416 vertices from the Natural Earth 1:50m coastlines; cells split above
+256 vertices; 120 seed centres. Release build on an Apple M2 Pro.
 
 | Measure | Result |
 |---|---|
-| Cell structure | 366 cells in 8 rounds, 26 ms |
-| Cell radius | 115 / 1,035 / 1,690 km (min / median / max) |
-| Encode and decode all vertices | 7 ms; worst error 0.58 mm; 12 bytes per point |
-| Home-cell walk | 0.03 steps per point from the previous vertex's cell; 7.7 from a fixed start |
-| 500 km cap around Dublin | 9 cells; 2.9% of vertices read; all 662 true hits found |
-| Original 1992 16-bit encoding | worst error 111 m against the ASCII source |
-| Delaunay, 10⁶ random sites | 0.69 s (`geo` backend) |
+| Cell structure | 430 cells in 7 rounds, 19 ms |
+| Cell radius | 145 / 1,019 / 1,691 km (min / median / max) |
+| Encode and decode all vertices | 3 ms; worst error 0.58 mm; 12 bytes per point |
+| Home-cell walk | 0.05 steps per point from the previous vertex's cell; 8.8 from a fixed start |
+| 500 km cap around Dublin | 11 cells; 3.3% of vertices read; all 910 true hits found |
+| Delaunay, 10⁶ random sites | 0.58 s (`geo` backend) |
 
 The port agrees with the original C `MapStereo`, `UnMapStereo` and `ArcDist`
 to 1e-12 on 2,000 cases, and reproduces its decoding of the first vertex of
