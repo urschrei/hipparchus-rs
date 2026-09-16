@@ -20,33 +20,35 @@ pub fn fibonacci(n: usize) -> Vec<V3> {
 
 /// Two-means split of a cell's points; `None` if they cannot be separated.
 fn split(pts: &[V3]) -> Option<[V3; 2]> {
-    let mean = |v: &mut dyn Iterator<Item = V3>| {
-        let s = v.fold(V3::default(), |a, b| a + b);
-        (s.norm() > 0.0).then(|| s.normalized())
-    };
-    let c = mean(&mut pts.iter().copied())?;
     let far = |from: V3| {
-        *pts.iter()
+        pts.iter()
+            .copied()
             .min_by(|a, b| a.dot(from).total_cmp(&b.dot(from)))
-            .unwrap()
     };
-    let mut k = [far(c), V3::default()];
-    k[1] = far(k[0]);
-    if k[0] == k[1] {
+    let a = far(mean(pts.iter().copied())?)?;
+    let b = far(a)?;
+    if a == b {
         return None;
     }
+    let mut k = [a, b];
     for _ in 0..8 {
-        let side = |p: &V3| p.dot(k[0]) < p.dot(k[1]);
+        let nearer_second = |p: &&V3| p.dot(k[0]) < p.dot(k[1]);
         k = [
-            mean(&mut pts.iter().filter(|p| !side(p)).copied())?,
-            mean(&mut pts.iter().filter(|p| side(p)).copied())?,
+            mean(pts.iter().filter(|p| !nearer_second(p)).copied())?,
+            mean(pts.iter().filter(nearer_second).copied())?,
         ];
     }
     Some(k)
 }
 
-#[derive(Clone, Debug)]
+/// Normalised sum of `pts`; `None` if the sum is zero.
+fn mean(pts: impl Iterator<Item = V3>) -> Option<V3> {
+    let sum = pts.fold(V3::default(), |a, b| a + b);
+    (sum.norm() > 0.0).then(|| sum.normalized())
+}
+
 /// Statistics from [`adaptive`].
+#[derive(Clone, Debug)]
 pub struct Report {
     /// Number of cell structures built.
     pub rounds: usize,
@@ -67,9 +69,9 @@ pub fn adaptive(
     capacity: usize,
     seeds: usize,
 ) -> Result<(CellStructure, Report), BuildError> {
-    let mut centres = fibonacci(seeds);
-    for rounds in 1.. {
-        let cs = CellStructure::new(centres.clone())?;
+    let mut cs = CellStructure::new(fibonacci(seeds))?;
+    let mut rounds = 1;
+    loop {
         let mut members: Vec<Vec<V3>> = vec![Vec::new(); cs.len()];
         let mut hint = 0;
         for &p in pts {
@@ -77,22 +79,21 @@ pub fn adaptive(
             hint = cs.home_cell(p, hint).0;
             members[hint as usize].push(p);
         }
-        let mut split_any = false;
-        let mut next = Vec::with_capacity(centres.len());
-        for (c, m) in centres.iter().zip(&members) {
-            match (m.len() > capacity).then(|| split(m)).flatten() {
-                Some(pair) => {
-                    next.extend(pair);
-                    split_any = true;
-                }
-                None => next.push(*c),
+        let mut next = Vec::with_capacity(cs.len());
+        for (&c, m) in cs.centres().iter().zip(&members) {
+            if m.len() > capacity
+                && let Some(pair) = split(m)
+            {
+                next.extend(pair);
+            } else {
+                next.push(c);
             }
         }
-        if !split_any {
+        if next.len() == cs.len() {
             let load = members.iter().map(Vec::len).collect();
             return Ok((cs, Report { rounds, load }));
         }
-        centres = next;
+        cs = CellStructure::new(next)?;
+        rounds += 1;
     }
-    unreachable!()
 }

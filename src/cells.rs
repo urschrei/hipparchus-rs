@@ -164,6 +164,14 @@ impl CellStructure {
     pub fn is_empty(&self) -> bool {
         self.centres.is_empty()
     }
+    /// Identifiers of all cells.
+    pub fn ids(&self) -> impl ExactSizeIterator<Item = u32> + use<> {
+        0..self.len() as u32
+    }
+    /// Centres of all cells, indexed by cell identifier.
+    pub fn centres(&self) -> &[V3] {
+        &self.centres
+    }
     /// Centre of cell `c`.
     pub fn centre(&self, c: u32) -> V3 {
         self.centres[c as usize]
@@ -196,14 +204,14 @@ impl CellStructure {
         let (mut cur, mut steps) = (start, 0);
         let mut best = p.dot(self.centre(cur));
         loop {
-            let mut moved = false;
-            for &nb in self.neighbours(cur) {
+            let prev = cur;
+            for &nb in self.neighbours(prev) {
                 let d = p.dot(self.centre(nb));
                 if d > best {
-                    (best, cur, moved) = (d, nb, true);
+                    (best, cur) = (d, nb);
                 }
             }
-            if !moved {
+            if cur == prev {
                 return (cur, steps);
             }
             steps += 1;
