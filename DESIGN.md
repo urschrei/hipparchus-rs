@@ -9,9 +9,9 @@ understand it, the design of v0.1, what we verified and how, the problems we
 found in the 1992 code, and a roadmap detailed enough to resume work without
 re-reading the sources.
 
-Section 13 lists the references. "AC8" below means the Auto-Carto 8 paper,
-"DDJ" the 1992 *Dr. Dobb's Journal* article and its companion archive, and
-"DGG" the 2000 terrain-model paper.
+The [README](README.md#references) lists the references. "AC8" below means
+the Auto-Carto 8 paper, "DDJ" the 1992 *Dr. Dobb's Journal* article and its
+companion archive, and "DGG" the 2000 terrain-model paper.
 
 ## 2. Background
 
@@ -65,22 +65,17 @@ Operations:
   `VIEW.C`, coastline data). It is the spherical, object-centred precursor;
   it does not contain the Voronoi engine.
 - Public documentation: AC8, DDJ, DGG, the tutorial, the function reference
-  and the utilities guide (links in section 13). The function reference is
+  and the utilities guide (links in the README). The function reference is
   the best source for the real library's data structures.
 
 ## 3. Crate overview (v0.1)
 
-| Module | Contents |
-|---|---|
-| `algebra` | `V3`, lat/lon conversion, `arc`, `arc_ddj`, `plane_extent`, `Frame` (stereographic). `From` conversions to and from `geo::Point`. |
-| `hull` | `sphere_delaunay_geo` (default), `sphere_delaunay` (exact reference), `HullError`. |
-| `cells` | `CellStructure`, `Local`, `BuildError`, `MAX_CELL_RADIUS`. |
-| `build` | `fibonacci` seeds, `adaptive` builder, `Report`. |
-| `ddj` | `IndexRec`, `read_index`, `decode_segment`. |
+The README lists the modules.
 
-Dependencies: `geo` (points, Haversine for tests, Delaunay via spade),
-`spade` (only for its handle types; the same version `geo` uses), `robust`
-(exact `orient3d`).
+Dependencies: `geo` (`Point` conversions and Delaunay via spade; Haversine
+in tests), `spade` (the `Triangulation` trait and vertex handles for the
+triangulation that `geo` returns; the requirement must stay compatible with
+`geo`'s), `robust` (exact `orient3d`).
 
 Conventions:
 
@@ -94,8 +89,9 @@ Conventions:
 ### 4.1 Direction cosines
 
 `V3::from_lat_lon` treats latitude as geocentric, as `ALGEBRA.C` does.
-Nothing in v0.1 depends on the ellipsoid. Values are normalised on
-construction but not re-normalised after arithmetic unless stated.
+Nothing in v0.1 depends on the ellipsoid. `from_lat_lon` and `normalized`
+return unit vectors; `V3::new` and the arithmetic operators do not
+normalise.
 
 ### 4.2 Distance
 
@@ -121,8 +117,8 @@ For a centre `c`:
   `ρ² = E² + N²`. The implementation normalises the result, as the original
   does.
 - A point at arc `r` from `c` maps to plane distance `2 tan(r/2)`
-  (`plane_extent`), which is at least `r`. The areal scale factor is
-  `sec²(r/2)`, so one plane unit is at most one unit of ground distance.
+  (`plane_extent`), which is at least `r`. The linear scale factor is
+  `sec²(r/2) ≥ 1`, so one plane unit is at most one unit of ground distance.
 
 This is algebraically the same mapping as `MapStereo`/`UnMapStereo`; the
 original constructs it geometrically (line–plane and line–sphere
@@ -226,9 +222,10 @@ within rounding.
 For each triangle `(a, b, c)` the circumcentre is
 `normalize((b − a) × (c − a))`. With counter-clockwise faces this normal
 points outward, so it is the Voronoi vertex on the correct side even for
-very large triangles. Each site collects `(next, prev, circumcentre)` from
-its triangles; the ring is formed by following `next` to the triangle whose
-`prev` equals it. The fan search is linear in the degree, which is small.
+very large triangles. Site `a` collects `(b, c, circumcentre)` from each
+incident triangle `(a, b, c)`; the ring follows `c` to the triangle whose
+`b` equals it. Each step searches the fan, so a ring costs the square of
+the degree, which is small.
 
 ### 5.4 Cell radius
 
@@ -308,8 +305,6 @@ vertices, finding all 662 true hits.
 4. Repeat until no cell needs splitting or no overloaded cell can be split
    (all its points identical).
 
-Coastline result: 366 cells in 8 rounds, 26 ms, maximum load 256.
-
 Limitations:
 
 - Every round rebuilds the whole structure; AC8 emphasises local change.
@@ -364,8 +359,8 @@ fetch instructions in that directory's README) and writes:
 
 - `tests/data/stereo.csv`: 2,000 cases of centre, point, `MapStereo`
   result, `UnMapStereo` of that result, and `ArcDist`. Centres are within
-  89° of the equator (the original fails at the poles); points are within
-  roughly 60° of the centre.
+  89° of the equator (the original fails at the poles); points are up to
+  166° from the centre (mean 42°).
 - `tests/data/coast0_first.csv`: the first decoded vertex of every dense
   segment, decoded as `VIEW.C` does.
 
@@ -374,7 +369,7 @@ fetch instructions in that directory's README) and writes:
 | Test | Establishes |
 |---|---|
 | `stereo_matches_original_c` | `Frame::map`, `Frame::unmap` and `arc_ddj` agree with the C to 1e-12 (1e-14 for `arc_ddj`). |
-| `coast_decode_matches_original_c` | The index reader and decoder reproduce the C for all 992 dense segments. |
+| `coast_decode_matches_original_c` | The index reader reproduces the C offsets, and the decoder reproduces the first vertex of each of the 992 dense segments to 1e-12. |
 | `poles_round_trip` | The pole frame round-trips at both poles. |
 | `arc_agrees_with_geo_haversine` | `arc` matches `geo` to 1 µm on 1,000 random pairs. |
 | `delaunay_is_valid` | Both backends satisfy Euler's formula and an exact empty-circumcircle check (`orient3d ≥ 0` for every site and face) for n = 4 to 3,000, produce identical edge sets, and handle a 1 km cluster containing the projection pole. |
@@ -383,8 +378,7 @@ fetch instructions in that directory's README) and writes:
 | `encode_decode_and_cap_queries` | Round-trip error within two resolution units; cap queries contain the home cell of every sampled point inside the cap. |
 | README doctest | The README usage example compiles and round-trips below 1 mm. |
 
-CI (`.github/workflows/ci.yml`) runs `cargo fmt --check`,
-`cargo clippy --all-targets -D warnings` and `cargo test --release`.
+CI (`.github/workflows/ci.yml`) checks formatting, lints and tests.
 
 ## 9. Performance
 
@@ -405,13 +399,13 @@ Release build on a shared Linux sandbox; indicative only.
 - O1. Tie-breaking in the walk is start-dependent. A unique stored
   representation needs a rule, e.g. among equidistant centres choose the
   lowest identifier, which requires an exact dot-product comparison (O3).
-- O2. Local encoding assumes the point's home cell. `encode` with a stale or
-  wrong cell cannot overflow (the walk always runs), but decoded points near
-  cell boundaries may be assigned to a different cell when re-encoded.
+- O2. `encode` always walks from its hint, so a stale hint cannot cause
+  overflow. Rounding can move a decoded point near a cell boundary into a
+  neighbouring cell, so re-encoding it can change its cell.
 - O3. There is no exact predicate for "`p` is nearer to `c` than to `u`",
   i.e. `sign(p · (c − u))`. `robust` provides only orientation and
-  in-circle tests. Lines and regions (R1, R2) need it; a Shewchuk-style
-  two-product expansion is a feasible solution to this.
+  in-circle tests. Lines and regions (R1, R2) need it; Shewchuk-style
+  expansion arithmetic would provide it.
 - O4. `CellStructure` holds `Vec<Vec<_>>` rings. A compressed layout (offsets
   plus one flat array) would suit memory mapping (R6).
 - O5. `HullError` and `BuildError` do not implement `std::error::Error` or
@@ -580,8 +574,8 @@ this crate.
 - The VCF forum user `spd` (threads "A software thing I built: GPS on a
   25MHz 486-SX" and "Hipparchus GIS library docs / software from Geodesy ?")
   is looking for the same material.
-- Hrvoje Lukatela still hosts papers at lukatela.com; he could clarify
-  boundary handling, restructuring, the distance proxy and the ellipsoidal
+- Hrvoje Lukatela hosts papers at lukatela.com and could clarify boundary
+  handling, restructuring, the distance proxy and the ellipsoidal
   projection.
 - Former customers' archives are the likeliest source of the auxiliary
   library and utilities source.
@@ -601,32 +595,3 @@ this crate.
 | D9 | `MAX_CELL_RADIUS = 2.0` | Guards the stereographic scale; lower it for R3. |
 | D10 | Sphere only in v0.1 | Matches the public 1992 code; ellipsoid is R5. |
 | D11 | Blue Oak Model License 1.0.0 | Permissive; the 1992 data files are excluded and documented. |
-
-## 13. References
-
-Gilmore, R. V. (1992). *Hipparchus Tutorial*. Geodyssey Limited. Later
-edition online:
-<https://geodyssey.neocities.org/tutorial/tutorial.html>
-
-Geodyssey Limited. Hipparchus library function reference:
-<https://geodyssey.neocities.org/overview/functions>; utilities guide:
-<https://geodyssey.neocities.org/utilities/utilities>; archive site:
-<https://geodyssey.github.io/>
-
-Karney, C. F. F. (2013). Algorithms for geodesics. *Journal of Geodesy*,
-87(1), 43–55. <https://doi.org/10.1007/s00190-012-0578-z>
-
-Lukatela, H. (1987). Hipparchus geopositioning model: an overview. In
-*Proceedings of Auto-Carto 8*, Baltimore, MD. American Society for
-Photogrammetry and Remote Sensing.
-<https://cartogis.org/docs/proceedings/archive/auto-carto-8/pdf/hipparchus-geopositioning-model-an-overview.pdf>;
-HTML: <https://geodyssey.neocities.org/papers/hlauto8>
-
-Lukatela, H. (2000). A seamless global terrain model in the Hipparchus
-system. International Conference on Discrete Global Grids, Santa Barbara,
-CA, 26–28 March 2000. <http://lukatela.com/hrvoje/papers/ggterra.html>
-
-Lukatela, H., & Russell, J. (1992). Spatial data and the Voronoi
-tessellation. *Dr. Dobb's Journal*, December 1992.
-<https://geodyssey.neocities.org/papers/dobbs92>; companion archive:
-<http://nemo.asuscomm.com/orbis/geozips/dobbs92.zip>

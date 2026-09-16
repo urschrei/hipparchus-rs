@@ -67,8 +67,8 @@ assert!(hipparchus_rs::arc(p, back) * hipparchus_rs::EARTH_RADIUS < 1e-3);
 | Delaunay, 10⁶ random sites | 0.69 s (`geo` backend) |
 
 The port agrees with the original C `MapStereo`, `UnMapStereo` and `ArcDist`
-to 1e-12 on 2,000 cases, and decodes all 992 dense coastline segments
-identically.
+to 1e-12 on 2,000 cases, and reproduces its decoding of the first vertex of
+each of the 992 dense coastline segments to 1e-12.
 
 ## References
 
