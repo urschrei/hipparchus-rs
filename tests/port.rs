@@ -21,9 +21,12 @@ impl Rng {
     }
 }
 
-fn rows(csv: &str) -> impl Iterator<Item = Vec<f64>> + '_ {
-    csv.lines()
-        .map(|l| l.split(',').map(|x| x.parse().unwrap()).collect())
+/// Rows of `N` numbers.
+fn rows<const N: usize>(csv: &str) -> impl Iterator<Item = [f64; N]> + '_ {
+    csv.lines().map(|l| {
+        let row: Vec<f64> = l.split(',').map(|x| x.parse().unwrap()).collect();
+        row.try_into().unwrap()
+    })
 }
 
 fn close(a: V3, b: V3, tol: f64) -> bool {
@@ -91,16 +94,14 @@ fn draw_cell(tc: &TestCase, cs: &CellStructure) -> u32 {
 #[test]
 fn stereo_matches_original_c() {
     for r in rows(include_str!("data/stereo.csv")) {
-        let (p0, pe) = (V3::new(r[0], r[1], r[2]), V3::new(r[3], r[4], r[5]));
+        let [cx, cy, cz, px, py, pz, e_c, n_c, bx, by, bz, arc_c] = r;
+        let (p0, pe) = (V3::new(cx, cy, cz), V3::new(px, py, pz));
         let f = Frame::new(p0);
         let [e, n] = f.map(pe);
-        assert!(
-            (e - r[6]).abs() < 1e-12 && (n - r[7]).abs() < 1e-12,
-            "{r:?}"
-        );
-        let back = f.unmap([r[6], r[7]]);
-        assert!(close(back, V3::new(r[8], r[9], r[10]), 1e-12));
-        assert!((algebra::arc_ddj(p0, pe) - r[11]).abs() < 1e-14);
+        assert!((e - e_c).abs() < 1e-12 && (n - n_c).abs() < 1e-12, "{r:?}");
+        let back = f.unmap([e_c, n_c]);
+        assert!(close(back, V3::new(bx, by, bz), 1e-12));
+        assert!((algebra::arc_ddj(p0, pe) - arc_c).abs() < 1e-14);
     }
 }
 
@@ -109,10 +110,10 @@ fn coast_decode_matches_original_c() {
     let idx = ddj::read_index(include_bytes!("data/COAST0.IDX"));
     let dat = include_bytes!("data/COAST.DAT");
     assert_eq!(idx.len(), 992);
-    for (rec, r) in idx.iter().zip(rows(include_str!("data/coast0_first.csv"))) {
-        assert_eq!(rec.offset as f64, r[0]);
+    for (rec, [offset, x, y, z]) in idx.iter().zip(rows(include_str!("data/coast0_first.csv"))) {
+        assert_eq!(f64::from(rec.offset), offset);
         let first = ddj::decode_segment(rec, dat)[0];
-        assert!(close(first, V3::new(r[1], r[2], r[3]), 1e-12));
+        assert!(close(first, V3::new(x, y, z), 1e-12));
     }
 }
 
@@ -191,12 +192,8 @@ fn assert_delaunay(pts: &[V3], tris: &[[u32; 3]], name: &str, tolerance: f64) {
     assert_eq!(tris.len(), 2 * pts.len() - 4, "{name}: Euler");
     // The faces form a closed surface: each directed edge occurs once, and so
     // does its reverse.
-    let directed: Vec<(u32, u32)> = tris
-        .iter()
-        .flat_map(|&[a, b, c]| [(a, b), (b, c), (c, a)])
-        .collect();
-    let set: BTreeSet<_> = directed.iter().copied().collect();
-    assert_eq!(set.len(), directed.len(), "{name}: repeated edge");
+    let set = edges(tris);
+    assert_eq!(set.len(), 3 * tris.len(), "{name}: repeated edge");
     assert!(
         set.iter().all(|&(a, b)| set.contains(&(b, a))),
         "{name}: open edge"
@@ -336,7 +333,7 @@ fn wide_cell_is_rejected() {
 #[hegel::test]
 fn neighbour_rings_are_symmetric(tc: TestCase) {
     let cs = draw_structure(&tc);
-    for c in 0..cs.len() as u32 {
+    for c in cs.ids() {
         let ring = cs.neighbours(c);
         let distinct: BTreeSet<_> = ring.iter().collect();
         assert_eq!(distinct.len(), ring.len(), "cell {c}: repeated neighbour");
@@ -349,7 +346,7 @@ fn neighbour_rings_are_symmetric(tc: TestCase) {
 #[hegel::test]
 fn voronoi_vertices_are_nearest_to_their_sites(tc: TestCase) {
     let cs = draw_structure(&tc);
-    for c in 0..cs.len() as u32 {
+    for c in cs.ids() {
         let (ring, verts) = (cs.neighbours(c), cs.vertices(c));
         assert_eq!(ring.len(), verts.len());
         for (k, &v) in verts.iter().enumerate() {
@@ -359,7 +356,7 @@ fn voronoi_vertices_are_nearest_to_their_sites(tc: TestCase) {
             for nb in [ring[k], ring[(k + 1) % ring.len()]] {
                 assert!((v.dot(cs.centre(nb)) - d).abs() < 1e-12, "{c}, {k}");
             }
-            for other in 0..cs.len() as u32 {
+            for other in cs.ids() {
                 assert!(v.dot(cs.centre(other)) <= d + 1e-12, "{c}, {k}");
             }
         }
@@ -370,7 +367,8 @@ fn voronoi_vertices_are_nearest_to_their_sites(tc: TestCase) {
 fn walk_finds_nearest_centre(tc: TestCase) {
     let cs = draw_structure(&tc);
     let (p, start) = (draw_point(&tc), draw_cell(&tc, &cs));
-    let nearest = (0..cs.len() as u32)
+    let nearest = cs
+        .ids()
         .map(|c| p.dot(cs.centre(c)))
         .fold(f64::NEG_INFINITY, f64::max);
     let (home, _) = cs.home_cell(p, start);
